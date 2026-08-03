@@ -57,9 +57,16 @@ Set-ExecutionPolicy -Scope Process Bypass
 client_id = "YOUR_GOOGLE_OAUTH_CLIENT_ID"
 client_secret = "YOUR_GOOGLE_OAUTH_CLIENT_SECRET"
 redirect_uri = "https://YOUR-APP.streamlit.app"
+state_secret = "RANDOM_LONG_SECRET"
 ```
 
-אין להעלות את הערכים האמיתיים ל-GitHub.
+אפשר ליצור `state_secret` מקומי באמצעות:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+בשלב הפרוטוטייפ מומלץ להשאיר את מסך ההסכמה של Google במצב Testing ולהוסיף את אנשי הצוות הרלוונטיים כ-Test users. אין להעלות את הערכים האמיתיים ל-GitHub.
 
 ## 4. בדיקת תקינות
 

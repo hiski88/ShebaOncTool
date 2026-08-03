@@ -70,7 +70,7 @@ powershell -ExecutionPolicy Bypass -File .\PUBLISH_TO_GITHUB.ps1
 powershell -ExecutionPolicy Bypass -File .\RUN_LOCAL.ps1
 ```
 
-הסבר מלא נמצא בקובץ `DEPLOYMENT_HE.md`.
+הסבר מלא נמצא בקבצים `START_HERE_HE.md` ו-`DEPLOYMENT_HE.md`.
 
 ## הרצה מקומית
 
@@ -115,9 +115,10 @@ streamlit run app.py
 client_id = "YOUR_GOOGLE_OAUTH_CLIENT_ID"
 client_secret = "YOUR_GOOGLE_OAUTH_CLIENT_SECRET"
 redirect_uri = "https://YOUR-APP.streamlit.app"
+state_secret = "RANDOM_LONG_SECRET"
 ```
 
-האפליקציה מבקשת רק הרשאת עריכת אירועים והרשאת קריאת רשימת היומנים, ולא הרשאה מלאה למחיקת יומנים או לשיתוף שלהם. אסימוני ההתחברות נשמרים רק ב-session של המשתמש ואינם נכתבים ל-GitHub.
+האפליקציה מבקשת רק הרשאת עריכת אירועים והרשאת קריאת רשימת היומנים, ולא הרשאה מלאה למחיקת יומנים או לשיתוף שלהם. אסימוני ההתחברות נשמרים רק ב-session של המשתמש ואינם נכתבים ל-GitHub. מזהה החזרה של OAuth חתום ומוגבל בזמן.
 
 ## פרטיות
 
