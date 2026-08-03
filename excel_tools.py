@@ -66,7 +66,7 @@ def _write_dataframe(sheet, dataframe: pd.DataFrame, start_row: int = 1, start_c
             cell.value = value
             cell.alignment = Alignment(horizontal="right", vertical="top", wrap_text=True)
             if hasattr(value, "year") and hasattr(value, "month") and hasattr(value, "day"):
-                cell.number_format = "DD.MM.YYYY"
+                cell.number_format = "dd.mm.yyyy"
 
 
 def build_personal_submission_workbook(
@@ -119,6 +119,7 @@ def build_response_collection_template(year: int, month: int, rows: int = 50) ->
     sheet.column_dimensions["A"].width = 24
     sheet.column_dimensions["B"].width = 100
     sheet.column_dimensions["C"].width = 36
+    sheet.auto_filter.ref = f"A1:C{rows + 1}"
 
     instructions = workbook.create_sheet("הנחיות")
     _setup_sheet(instructions)
@@ -255,7 +256,7 @@ def build_schedule_template(year: int, month: int, config: Mapping[str, Any]) ->
         weekday = row[1]
         holiday = row[2]
         sheet.cell(row_index, 1, current)
-        sheet.cell(row_index, 1).number_format = "DD.MM.YYYY"
+        sheet.cell(row_index, 1).number_format = "dd.mm.yyyy"
         sheet.cell(row_index, 2, weekday)
         sheet.cell(row_index, 3, holiday)
         for column in range(1, final_column + 1):

@@ -28,6 +28,12 @@ def test_rosh_hashana_and_erev_are_detected():
     assert "ראש השנה" in important_day_name(date(2026, 9, 12))
 
 
+def test_chol_hamoed_is_labeled_separately():
+    assert important_day_name(date(2026, 9, 26)) == "סוכות"
+    assert important_day_name(date(2026, 9, 27)) == "חול המועד סוכות"
+    assert important_day_name(date(2026, 10, 2)).startswith("הושענא רבה")
+
+
 def test_submission_round_trip_and_matrix():
     table = build_month_table(2026, 8)
     table["לא זמין"] = False
