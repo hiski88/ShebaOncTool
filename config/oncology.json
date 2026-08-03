@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "app_title": "מערכת תכנון ושיבוץ - אונקולוגיה",
   "timezone": "Asia/Jerusalem",
   "schedule": {
@@ -18,23 +18,23 @@
     "columns": [
       {
         "index": 2,
-        "source_code": "tracking_1",
-        "label": "מעקב אישי 1",
-        "kind": "tracking",
+        "source_code": "radiation",
+        "label": "קרינה",
+        "kind": "station",
         "slot": 1
       },
       {
         "index": 3,
-        "source_code": "tracking_2",
-        "label": "מעקב אישי 2",
-        "kind": "tracking",
+        "source_code": "radiation",
+        "label": "קרינה",
+        "kind": "station",
         "slot": 2
       },
       {
         "index": 4,
-        "source_code": "tracking_3",
-        "label": "מעקב אישי 3",
-        "kind": "tracking",
+        "source_code": "radiation",
+        "label": "קרינה",
+        "kind": "station",
         "slot": 3
       },
       {
@@ -257,6 +257,14 @@
     },
     {
       "terms": [
+        "קרינה"
+      ],
+      "code": "radiation",
+      "label": "קרינה",
+      "kind": "task"
+    },
+    {
+      "terms": [
         "מחלקה"
       ],
       "code": "department_regular",
@@ -291,6 +299,7 @@
     "א.מהיר",
     "תגבור מיון",
     "מחלקה",
+    "קרינה",
     "מרפאות",
     "ריאות",
     "שד",
@@ -331,7 +340,8 @@
     "after_duty": "אחרי תורנות",
     "vacation": "חופש",
     "absence": "היעדרות",
-    "absence_other": "היעדרויות / אחר"
+    "absence_other": "היעדרויות / אחר",
+    "radiation": "קרינה"
   },
   "event_defaults": {
     "department_regular": {
@@ -372,7 +382,7 @@
     },
     "rapid_diagnosis": {
       "all_day": true,
-      "create": true
+      "create": true,
     },
     "er_reinforcement": {
       "all_day": true,
@@ -456,6 +466,10 @@
     "absence_other": {
       "all_day": true,
       "create": false
+    },
+    "radiation": {
+      "all_day": true,
+      "create": true
     }
   },
   "staffing_rules": {
