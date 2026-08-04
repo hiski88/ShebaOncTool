@@ -3,315 +3,55 @@
   "app_title": "מערכת תכנון ושיבוץ - אונקולוגיה",
   "timezone": "Asia/Jerusalem",
   "schedule": {
-    "sheet_names": [
-      "סידור עבודה"
-    ],
-    "title_cells": [
-      "A1",
-      "A2",
-      "B1",
-      "B2"
-    ],
+    "sheet_names": ["סידור עבודה"],
+    "title_cells": ["A1", "A2", "B1", "B2"],
     "header_search_rows": 10,
     "day_number_column": 0,
     "weekday_column": 1,
     "columns": [
-      {
-        "index": 2,
-        "source_code": "radiation",
-        "label": "קרינה",
-        "kind": "station",
-        "slot": 1
-      },
-      {
-        "index": 3,
-        "source_code": "radiation",
-        "label": "קרינה",
-        "kind": "station",
-        "slot": 2
-      },
-      {
-        "index": 4,
-        "source_code": "radiation",
-        "label": "קרינה",
-        "kind": "station",
-        "slot": 3
-      },
-      {
-        "index": 5,
-        "source_code": "department",
-        "label": "מחלקה",
-        "kind": "station",
-        "slot": 1
-      },
-      {
-        "index": 6,
-        "source_code": "department",
-        "label": "מחלקה",
-        "kind": "station",
-        "slot": 2
-      },
-      {
-        "index": 7,
-        "source_code": "department",
-        "label": "מחלקה",
-        "kind": "station",
-        "slot": 3
-      },
-      {
-        "index": 8,
-        "source_code": "att",
-        "label": "ATT",
-        "kind": "station",
-        "slot": 1
-      },
-      {
-        "index": 9,
-        "source_code": "day_hospital",
-        "label": "אשפוז יום",
-        "kind": "station",
-        "slot": 1
-      },
-      {
-        "index": 10,
-        "source_code": "oncology_er",
-        "label": "מיון אונקולוגי",
-        "kind": "station",
-        "slot": 1
-      },
-      {
-        "index": 11,
-        "source_code": "rapid_diagnosis",
-        "label": "אבחון מהיר",
-        "kind": "station",
-        "slot": 1
-      },
-      {
-        "index": 12,
-        "source_code": "er_reinforcement",
-        "label": "תגבור מיון",
-        "kind": "station",
-        "slot": 1
-      },
-      {
-        "index": 13,
-        "source_code": "clinic",
-        "label": "מרפאות",
-        "kind": "station",
-        "slot": 1
-      },
-      {
-        "index": 14,
-        "source_code": "clinic",
-        "label": "מרפאות",
-        "kind": "station",
-        "slot": 2
-      },
-      {
-        "index": 15,
-        "source_code": "clinic",
-        "label": "מרפאות",
-        "kind": "station",
-        "slot": 3
-      },
-      {
-        "index": 16,
-        "source_code": "clinic",
-        "label": "מרפאות",
-        "kind": "station",
-        "slot": 4
-      },
-      {
-        "index": 17,
-        "source_code": "ward_on_call",
-        "label": "כונן מחלקה",
-        "kind": "on_call",
-        "slot": 1
-      },
-      {
-        "index": 18,
-        "source_code": "palliative_on_call",
-        "label": "כונן פליאציה",
-        "kind": "on_call",
-        "slot": 1
-      },
-      {
-        "index": 19,
-        "source_code": "radiation_on_call",
-        "label": "כונן קרינה",
-        "kind": "on_call",
-        "slot": 1
-      },
-      {
-        "index": 20,
-        "source_code": "day_hospital_duty",
-        "label": "תורנות אשפוז יום",
-        "kind": "duty",
-        "slot": 1
-      },
-      {
-        "index": 21,
-        "source_code": "er_duty",
-        "label": "תורנות מיון",
-        "kind": "duty",
-        "slot": 1
-      },
-      {
-        "index": 22,
-        "source_code": "ward_duty",
-        "label": "תורנות מחלקה",
-        "kind": "duty",
-        "slot": 1
-      },
-      {
-        "index": 23,
-        "source_code": "absence_other",
-        "label": "היעדרויות / אחר",
-        "kind": "status",
-        "slot": 1
-      }
+      {"index": 2, "source_code": "radiation", "label": "קרינה", "kind": "station", "slot": 1},
+      {"index": 3, "source_code": "radiation", "label": "קרינה", "kind": "station", "slot": 2},
+      {"index": 4, "source_code": "radiation", "label": "קרינה", "kind": "station", "slot": 3},
+      {"index": 5, "source_code": "department", "label": "מחלקה", "kind": "station", "slot": 1},
+      {"index": 6, "source_code": "department", "label": "מחלקה", "kind": "station", "slot": 2},
+      {"index": 7, "source_code": "department", "label": "מחלקה", "kind": "station", "slot": 3},
+      {"index": 8, "source_code": "att", "label": "ATT", "kind": "station", "slot": 1},
+      {"index": 9, "source_code": "day_hospital", "label": "אשפוז יום", "kind": "station", "slot": 1},
+      {"index": 10, "source_code": "oncology_er", "label": "מיון אונקולוגי", "kind": "station", "slot": 1},
+      {"index": 11, "source_code": "rapid_diagnosis", "label": "אבחון מהיר", "kind": "station", "slot": 1},
+      {"index": 12, "source_code": "er_reinforcement", "label": "תגבור מיון", "kind": "station", "slot": 1},
+      {"index": 13, "source_code": "clinic", "label": "מרפאות", "kind": "station", "slot": 1},
+      {"index": 14, "source_code": "clinic", "label": "מרפאות", "kind": "station", "slot": 2},
+      {"index": 15, "source_code": "clinic", "label": "מרפאות", "kind": "station", "slot": 3},
+      {"index": 16, "source_code": "clinic", "label": "מרפאות", "kind": "station", "slot": 4},
+      {"index": 17, "source_code": "ward_on_call", "label": "כונן מחלקה", "kind": "on_call", "slot": 1},
+      {"index": 18, "source_code": "palliative_on_call", "label": "כונן פליאציה", "kind": "on_call", "slot": 1},
+      {"index": 19, "source_code": "radiation_on_call", "label": "כונן קרינה", "kind": "on_call", "slot": 1},
+      {"index": 20, "source_code": "day_hospital_duty", "label": "תורנות אשפוז יום", "kind": "duty", "slot": 1},
+      {"index": 21, "source_code": "er_duty", "label": "תורנות מיון", "kind": "duty", "slot": 1},
+      {"index": 22, "source_code": "ward_duty", "label": "תורנות מחלקה", "kind": "duty", "slot": 1},
+      {"index": 23, "source_code": "absence_other", "label": "היעדרויות / אחר", "kind": "status", "slot": 1}
     ]
   },
   "activity_aliases": [
-    {
-      "terms": [
-        "א\"ת",
-        "א״ת",
-        "א׳ת",
-        "אחרי תורנות"
-      ],
-      "code": "after_duty",
-      "label": "אחרי תורנות",
-      "kind": "status"
-    },
-    {
-      "terms": [
-        "חופש",
-        "חופשה"
-      ],
-      "code": "vacation",
-      "label": "חופש",
-      "kind": "status"
-    },
-    {
-      "terms": [
-        "היעדרות"
-      ],
-      "code": "absence",
-      "label": "היעדרות",
-      "kind": "status"
-    },
-    {
-      "terms": [
-        "מחקר"
-      ],
-      "code": "research",
-      "label": "מחקר",
-      "kind": "task"
-    },
-    {
-      "terms": [
-        "יום עיון",
-        "כנס"
-      ],
-      "code": "study_day",
-      "label": "יום עיון / כנס",
-      "kind": "task"
-    },
-    {
-      "terms": [
-        "אשפוז יום",
-        "א.יום",
-        "א יום"
-      ],
-      "code": "day_hospital",
-      "label": "אשפוז יום",
-      "kind": "task"
-    },
-    {
-      "terms": [
-        "מיון אונקולוגי",
-        "מיון"
-      ],
-      "code": "oncology_er",
-      "label": "מיון אונקולוגי",
-      "kind": "task"
-    },
-    {
-      "terms": [
-        "אבחון מהיר",
-        "א.מהיר",
-        "א מהיר"
-      ],
-      "code": "rapid_diagnosis",
-      "label": "אבחון מהיר",
-      "kind": "task"
-    },
-    {
-      "terms": [
-        "תגבור מיון"
-      ],
-      "code": "er_reinforcement",
-      "label": "תגבור מיון",
-      "kind": "task"
-    },
-    {
-      "terms": [
-        "קרינה"
-      ],
-      "code": "radiation",
-      "label": "קרינה",
-      "kind": "task"
-    },
-    {
-      "terms": [
-        "מחלקה"
-      ],
-      "code": "department_regular",
-      "label": "מחלקה",
-      "kind": "task"
-    },
-    {
-      "terms": [
-        "תוכנית שחר",
-        "תכנית שחר"
-      ],
-      "code": "shahar_program",
-      "label": "תוכנית שחר",
-      "kind": "task"
-    }
+    {"terms": ["א\"ת", "א״ת", "א׳ת", "אחרי תורנות"], "code": "after_duty", "label": "אחרי תורנות", "kind": "status"},
+    {"terms": ["חופש", "חופשה"], "code": "vacation", "label": "חופש", "kind": "status"},
+    {"terms": ["היעדרות"], "code": "absence", "label": "היעדרות", "kind": "status"},
+    {"terms": ["מחקר"], "code": "research", "label": "מחקר", "kind": "task"},
+    {"terms": ["יום עיון", "כנס"], "code": "study_day", "label": "יום עיון / כנס", "kind": "task"},
+    {"terms": ["אשפוז יום", "א.יום", "א יום"], "code": "day_hospital", "label": "אשפוז יום", "kind": "task"},
+    {"terms": ["מיון אונקולוגי", "מיון"], "code": "oncology_er", "label": "מיון אונקולוגי", "kind": "task"},
+    {"terms": ["אבחון מהיר", "א.מהיר", "א מהיר"], "code": "rapid_diagnosis", "label": "אבחון מהיר", "kind": "task"},
+    {"terms": ["תגבור מיון"], "code": "er_reinforcement", "label": "תגבור מיון", "kind": "task"},
+    {"terms": ["קרינה"], "code": "radiation", "label": "קרינה", "kind": "task"},
+    {"terms": ["מחלקה"], "code": "department_regular", "label": "מחלקה", "kind": "task"},
+    {"terms": ["תוכנית שחר", "תכנית שחר"], "code": "shahar_program", "label": "תוכנית שחר", "kind": "task"}
   ],
   "non_name_terms": [
-    "ATT",
-    "א\"ת",
-    "א״ת",
-    "אחרי תורנות",
-    "חופש",
-    "חופשה",
-    "מחקר",
-    "יום עיון",
-    "כנס",
-    "אשפוז יום",
-    "א.יום",
-    "מיון",
-    "מיון אונקולוגי",
-    "אבחון מהיר",
-    "א.מהיר",
-    "תגבור מיון",
-    "מחלקה",
-    "קרינה",
-    "מרפאות",
-    "ריאות",
-    "שד",
-    "מלנומה",
-    "סרקומה",
-    "חוזרים",
-    "תלפיות",
-    "פליאציה",
-    "תוכנית שחר",
-    "תכנית שחר",
-    "היעדרות",
-    "אחר"
+    "ATT", "א\"ת", "א״ת", "אחרי תורנות", "חופש", "חופשה", "מחקר", "יום עיון", "כנס",
+    "אשפוז יום", "א.יום", "מיון", "מיון אונקולוגי", "אבחון מהיר", "א.מהיר", "תגבור מיון",
+    "מחלקה", "קרינה", "מרפאות", "ריאות", "שד", "מלנומה", "סרקומה", "חוזרים", "תלפיות",
+    "פליאציה", "תוכנית שחר", "תכנית שחר", "היעדרות", "אחר"
   ],
   "task_labels": {
     "department_regular": "מחלקה - יום רגיל",
@@ -344,133 +84,34 @@
     "radiation": "קרינה"
   },
   "event_defaults": {
-    "department_regular": {
-      "all_day": true,
-      "create": true
-    },
-    "department_weekend": {
-      "all_day": true,
-      "create": true
-    },
-    "department_weekend_friday_duty": {
-      "all_day": true,
-      "create": false
-    },
-    "friday_visit": {
-      "all_day": true,
-      "create": true
-    },
-    "department_weekend_outgoing": {
-      "all_day": true,
-      "create": false
-    },
-    "department_weekend_saturday_duty": {
-      "all_day": true,
-      "create": false
-    },
-    "att": {
-      "all_day": true,
-      "create": true
-    },
-    "day_hospital": {
-      "all_day": true,
-      "create": true
-    },
-    "oncology_er": {
-      "all_day": true,
-      "create": true
-    },
-    "rapid_diagnosis": {
-      "all_day": true,
-      "create": true,
-    },
-    "er_reinforcement": {
-      "all_day": true,
-      "create": true
-    },
-    "clinic": {
-      "all_day": true,
-      "create": true
-    },
-    "ward_on_call": {
-      "all_day": true,
-      "create": true
-    },
-    "palliative_on_call": {
-      "all_day": true,
-      "create": true
-    },
-    "radiation_on_call": {
-      "all_day": true,
-      "create": true
-    },
-    "research": {
-      "all_day": true,
-      "create": true
-    },
-    "study_day": {
-      "all_day": true,
-      "create": true
-    },
-    "shahar_program": {
-      "all_day": true,
-      "create": true
-    },
-    "day_hospital_duty": {
-      "all_day": false,
-      "start": "16:00",
-      "end": "21:00",
-      "end_day_offset": 0,
-      "create": true
-    },
-    "er_duty": {
-      "all_day": false,
-      "start": "16:00",
-      "end": "08:00",
-      "end_day_offset": 1,
-      "create": true
-    },
-    "ward_duty_regular": {
-      "all_day": false,
-      "start": "16:00",
-      "end": "10:00",
-      "end_day_offset": 1,
-      "create": true
-    },
-    "ward_duty_friday": {
-      "all_day": false,
-      "start": "08:00",
-      "end": "10:00",
-      "end_day_offset": 1,
-      "create": true
-    },
-    "ward_duty_saturday": {
-      "all_day": false,
-      "start": "08:00",
-      "end": "10:00",
-      "end_day_offset": 1,
-      "create": true
-    },
-    "after_duty": {
-      "all_day": true,
-      "create": false
-    },
-    "vacation": {
-      "all_day": true,
-      "create": false
-    },
-    "absence": {
-      "all_day": true,
-      "create": false
-    },
-    "absence_other": {
-      "all_day": true,
-      "create": false
-    },
-    "radiation": {
-      "all_day": true,
-      "create": true
-    }
+    "department_regular": {"all_day": true, "create": true},
+    "department_weekend": {"all_day": true, "create": true},
+    "department_weekend_friday_duty": {"all_day": true, "create": false},
+    "friday_visit": {"all_day": true, "create": true},
+    "department_weekend_outgoing": {"all_day": true, "create": false},
+    "department_weekend_saturday_duty": {"all_day": true, "create": false},
+    "att": {"all_day": true, "create": true},
+    "day_hospital": {"all_day": true, "create": true},
+    "oncology_er": {"all_day": true, "create": true},
+    "rapid_diagnosis": {"all_day": true, "create": true},
+    "er_reinforcement": {"all_day": true, "create": true},
+    "clinic": {"all_day": true, "create": true},
+    "ward_on_call": {"all_day": true, "create": true},
+    "palliative_on_call": {"all_day": true, "create": true},
+    "radiation_on_call": {"all_day": true, "create": true},
+    "research": {"all_day": true, "create": true},
+    "study_day": {"all_day": true, "create": true},
+    "shahar_program": {"all_day": true, "create": true},
+    "day_hospital_duty": {"all_day": false, "start": "16:00", "end": "21:00", "end_day_offset": 0, "create": true},
+    "er_duty": {"all_day": false, "start": "16:00", "end": "08:00", "end_day_offset": 1, "create": true},
+    "ward_duty_regular": {"all_day": false, "start": "16:00", "end": "10:00", "end_day_offset": 1, "create": true},
+    "ward_duty_friday": {"all_day": false, "start": "08:00", "end": "10:00", "end_day_offset": 1, "create": true},
+    "ward_duty_saturday": {"all_day": false, "start": "08:00", "end": "10:00", "end_day_offset": 1, "create": true},
+    "after_duty": {"all_day": true, "create": false},
+    "vacation": {"all_day": true, "create": false},
+    "absence": {"all_day": true, "create": false},
+    "absence_other": {"all_day": true, "create": false},
+    "radiation": {"all_day": true, "create": true}
   },
   "staffing_rules": {
     "weekday_department": 3,
