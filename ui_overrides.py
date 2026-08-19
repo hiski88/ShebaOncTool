@@ -12,11 +12,34 @@ CALENDAR_EXCLUDED_CODES = {
 
 
 def install(app_module) -> None:
-    """Apply RTL layout fixes and suppress redundant post-duty absences."""
-    # Calendar candidates are intentionally conservative: generic absence and
-    # post-duty status are operational consequences, not useful calendar events.
+    """Apply RTL layout fixes and calendar filtering rules."""
     for code in CALENDAR_EXCLUDED_CODES:
         app_module.CALENDAR_TASK_CODES.discard(code)
+
+    # ת"ש is a meaningful entitled rest day and should be available as a
+    # selectable all-day calendar event. It is intentionally separate from
+    # generic post-duty absence, which remains hidden.
+    app_module.CALENDAR_TASK_CODES.add("rest_entitlement")
+    aliases = app_module.CONFIG.setdefault("activity_aliases", [])
+    if not any(item.get("code") == "rest_entitlement" for item in aliases):
+        aliases.insert(
+            0,
+            {
+                "terms": ["ת\"ש", "ת״ש", "ת'ש", "תש"],
+                "code": "rest_entitlement",
+                "label": "ת\"ש - יום מנוחה",
+                "kind": "status",
+            },
+        )
+    non_names = app_module.CONFIG.setdefault("non_name_terms", [])
+    for term in ["ת\"ש", "ת״ש", "ת'ש", "תש"]:
+        if term not in non_names:
+            non_names.append(term)
+    app_module.CONFIG.setdefault("task_labels", {})["rest_entitlement"] = "ת\"ש - יום מנוחה"
+    app_module.CONFIG.setdefault("event_defaults", {})["rest_entitlement"] = {
+        "all_day": True,
+        "create": True,
+    }
 
     st.markdown(
         """
@@ -27,7 +50,15 @@ def install(app_module) -> None:
         }
 
         [data-testid="stMainBlockContainer"],
-        .main .block-container,
+        .main .block-container {
+            direction: rtl !important;
+            text-align: right !important;
+            max-width: none !important;
+            width: 100% !important;
+            padding-left: 2rem !important;
+            padding-right: 2rem !important;
+        }
+
         [data-testid="stMarkdownContainer"],
         [data-testid="stWidgetLabel"],
         [data-testid="stCaptionContainer"],
@@ -75,7 +106,11 @@ def install(app_module) -> None:
             [data-testid="stAppViewContainer"] > .main,
             [data-testid="stMain"] {
                 margin-left: 0 !important;
-                margin-right: 21rem !important;
+                margin-right: 0 !important;
+                width: calc(100% - 21rem) !important;
+                max-width: none !important;
+                position: relative !important;
+                left: -21rem !important;
             }
 
             header[data-testid="stHeader"] {
@@ -85,10 +120,19 @@ def install(app_module) -> None:
         }
 
         div[data-testid="stDataFrame"],
-        div[data-testid="stDataEditor"],
+        div[data-testid="stDataEditor"] {
+            direction: rtl !important;
+            width: 100% !important;
+            max-width: none !important;
+        }
+
+        div[data-testid="stDataFrame"] > div,
+        div[data-testid="stDataEditor"] > div,
         div[data-testid="stDataFrame"] [role="grid"],
         div[data-testid="stDataEditor"] [role="grid"] {
             direction: rtl !important;
+            width: 100% !important;
+            max-width: none !important;
         }
 
         div[data-testid="stDataFrame"] [role="columnheader"],
@@ -97,6 +141,13 @@ def install(app_module) -> None:
         div[data-testid="stDataEditor"] [role="gridcell"] {
             direction: rtl !important;
             text-align: right !important;
+        }
+
+        @media (max-width: 768px) {
+            [data-testid="stMainBlockContainer"], .main .block-container {
+                padding-left: .75rem !important;
+                padding-right: .75rem !important;
+            }
         }
         </style>
         """,
