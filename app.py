@@ -7,6 +7,7 @@ install_calendar_event_overrides()
 
 import app_v2
 from calendar_reader_v2 import render_calendar_reader as render_calendar_reader_v2
+from ui_overrides import install as install_ui_overrides
 
 
 def _calendar_reader(year: int, month: int):
@@ -14,4 +15,5 @@ def _calendar_reader(year: int, month: int):
 
 
 app_v2.render_calendar_reader = _calendar_reader
+install_ui_overrides(app_v2)
 app_v2.main()
