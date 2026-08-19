@@ -18,6 +18,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Compile
-        run: python -m compileall app.py core.py excel_tools.py schedule_parser.py google_calendar.py
+        run: python -m compileall app.py app_v2.py calendar_event_overrides.py core.py excel_tools.py schedule_parser.py google_calendar.py
       - name: Test
         run: pytest -q
