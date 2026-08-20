@@ -1,0 +1,78 @@
+"""Tool 2: read monthly preference submissions directly from Google Sheets."""
+from __future__ import annotations
+
+from collections import Counter
+
+import pandas as pd
+
+from google_sheets_submissions import configured, read_submissions
+
+
+def install(app_module) -> None:
+    if getattr(app_module, "_tool2_submissions_override_installed", False):
+        return
+
+    def tool_manager_from_sheets() -> None:
+        st = app_module.st
+        app_module.render_header(
+            "2. ריכוז העדפות ובניית לוז",
+            "בחירת חודש מציגה אוטומטית את כל ההגשות שנקלטו מהצוות.",
+        )
+        year, month = app_module.month_selector("manager", offset=1)
+
+        if not configured(st):
+            st.error("חיבור Google Sheets אינו מוגדר באפליקציה.")
+            return
+
+        try:
+            submissions = read_submissions(st, year, month)
+        except Exception as exc:
+            st.error(f"לא ניתן לקרוא את ההגשות מ-Google Sheets: {exc}")
+            return
+
+        month_display = f"{month:02d}-{year:04d}"
+        if not submissions:
+            st.info(f"לא נמצאו הגשות לחודש {month_display}.")
+            return
+
+        counts = Counter(item["שם עובד"] for item in submissions)
+        unique_employees = len(counts)
+        duplicate_names = [name for name, count in counts.items() if count > 1]
+
+        st.success(
+            f"נמצאו {len(submissions)} הגשות של {unique_employees} עובדים לחודש {month_display}."
+        )
+
+        if duplicate_names:
+            details = ", ".join(f"{name} ({counts[name]})" for name in duplicate_names)
+            st.warning(f"זוהו הגשות כפולות: {details}")
+
+        display_rows = []
+        seen = Counter()
+        for item in submissions:
+            name = item["שם עובד"]
+            seen[name] += 1
+            count = counts[name]
+            duplicate_status = ""
+            if count > 1:
+                duplicate_status = f"{seen[name]} מתוך {count}"
+                if seen[name] == 1:
+                    duplicate_status += " - החדשה ביותר"
+
+            display_rows.append(
+                {
+                    "זמן הגשה": item["זמן הגשה"],
+                    "שם עובד": name,
+                    "חסימות": item["חסימות"],
+                    "חופשים": item["חופשים"],
+                    "הערות": item["הערות"],
+                    "כפילות": duplicate_status,
+                }
+            )
+
+        st.subheader("הגשות לחודש")
+        st.dataframe(pd.DataFrame(display_rows), width="stretch", hide_index=True)
+        st.caption("ההגשות מוצגות לפי סדר הקליטה, מהחדשה ביותר לישנה ביותר.")
+
+    app_module.tool_manager = tool_manager_from_sheets
+    app_module._tool2_submissions_override_installed = True
