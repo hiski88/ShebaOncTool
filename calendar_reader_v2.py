@@ -22,7 +22,6 @@ except Exception:
 
 LOCAL_STORAGE_KEY = "medstaff_oncology_preferences_calendar_events_v1"
 LOADED_CALENDARS_KEY = "medstaff_oncology_loaded_calendar_labels_v1"
-FLASH_MESSAGE_KEY = "preferences_calendar_flash_message_v1"
 
 
 def _load_json(key: str, default):
@@ -96,13 +95,6 @@ def _event_count(events_by_date: dict[str, list[str]]) -> int:
 
 
 def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, list[str]]:
-    st.subheader("אירועים מהיומנים האישיים")
-    st.caption("טוענים יומן אחד, ואם צריך מוסיפים יומן שני. האירועים מצטברים ואינם מסמנים חסימה אוטומטית.")
-
-    flash_message = st.session_state.pop(FLASH_MESSAGE_KEY, None)
-    if flash_message:
-        st.success(flash_message)
-
     if "preferences_calendar_events" not in st.session_state:
         st.session_state["preferences_calendar_events"] = _load_local_events()
     elif not st.session_state["preferences_calendar_events"]:
@@ -116,10 +108,6 @@ def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, lis
     events_by_date = st.session_state.get("preferences_calendar_events", {})
     loaded_labels = st.session_state.get("preferences_loaded_calendar_labels", [])
 
-    if events_by_date:
-        loaded_text = ", ".join(loaded_labels[:2]) if loaded_labels else "היומנים שנטענו"
-        st.success(f"נשמרו {_event_count(events_by_date)} אירועים מ-{loaded_text}. ניתן להוסיף יומן נוסף בלי למחוק אותם.")
-
     if not oauth_dependencies_available():
         st.info("חיבור היומן אינו זמין כרגע בסביבת האפליקציה.")
         return events_by_date
@@ -130,10 +118,7 @@ def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, lis
     credentials = get_credentials(st)
     if credentials is None:
         st.link_button("התחברות ל-Google Calendar", authorization_url(st), width="stretch")
-        st.caption("החיבור הוא לקריאה בלבד. לאחר החזרה מ-Google בוחרים יומן ולוחצים על טעינה.")
         return events_by_date
-
-    st.success("מחובר ל-Google Calendar")
 
     try:
         service = build_service(credentials)
@@ -145,7 +130,7 @@ def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, lis
     options = {item["label"]: item for item in calendars}
     labels = list(options)
     if not labels:
-        st.warning("החיבור ל-Google הצליח, אך לא נמצאו יומנים זמינים בחשבון המחובר.")
+        st.warning("לא נמצאו יומנים זמינים בחשבון Google המחובר.")
         return events_by_date
 
     selected_label = st.selectbox(
@@ -155,9 +140,7 @@ def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, lis
     )
 
     already_loaded = selected_label in loaded_labels
-    if already_loaded:
-        st.caption("יומן זה כבר נטען. טעינה נוספת רק תשלים אירועים חסרים ולא תיצור כפילויות.")
-    elif len(loaded_labels) >= 2:
+    if len(loaded_labels) >= 2 and not already_loaded:
         st.warning("כבר נטענו שני יומנים. כדי לבחור אחרים יש לנקות את האירועים ולהתחיל מחדש.")
 
     col_load, col_clear, col_disconnect = st.columns([2, 1, 1])
@@ -180,8 +163,7 @@ def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, lis
                 loaded_count = _event_count(loaded)
                 if loaded_count == 0:
                     st.warning(
-                        f"החיבור תקין, אך לא נמצאו אירועים ביומן '{selected_label}' עבור החודש שנבחר. "
-                        "בדוק שנבחרו החודש והשנה הנכונים ושהאירועים נמצאים ביומן הזה."
+                        f"לא נמצאו אירועים ביומן '{selected_label}' עבור החודש שנבחר."
                     )
                 else:
                     merged = _merge(events_by_date, loaded)
@@ -191,14 +173,6 @@ def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, lis
                         st.session_state["preferences_loaded_calendar_labels"] = loaded_labels
                     _save_json(LOCAL_STORAGE_KEY, merged)
                     _save_json(LOADED_CALENDARS_KEY, loaded_labels)
-                    if len(loaded_labels) == 1:
-                        st.session_state[FLASH_MESSAGE_KEY] = (
-                            f"נטענו {loaded_count} אירועים. ניתן עכשיו לבחור יומן נוסף ולטעון גם אותו."
-                        )
-                    else:
-                        st.session_state[FLASH_MESSAGE_KEY] = (
-                            f"נוספו {loaded_count} אירועים. האירועים משני היומנים מוצגים יחד."
-                        )
                     st.rerun()
             except Exception as exc:
                 st.error(f"טעינת אירועי היומן נכשלה: {exc}")
@@ -209,7 +183,6 @@ def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, lis
             st.session_state["preferences_loaded_calendar_labels"] = []
             _remove_local(LOCAL_STORAGE_KEY)
             _remove_local(LOADED_CALENDARS_KEY)
-            st.session_state[FLASH_MESSAGE_KEY] = "אירועי היומנים נוקו מהמכשיר הזה."
             st.rerun()
 
     with col_disconnect:
@@ -217,6 +190,6 @@ def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, lis
             _save_json(LOCAL_STORAGE_KEY, events_by_date)
             _save_json(LOADED_CALENDARS_KEY, loaded_labels)
             disconnect(st)
-            st.info("החיבור נותק. האירועים שכבר נטענו נשארו שמורים במכשיר.")
+            st.rerun()
 
     return events_by_date
