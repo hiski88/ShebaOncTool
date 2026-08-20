@@ -23,6 +23,42 @@ def _decode_part(value: str) -> bytes:
 _legacy._encode_part = _encode_part
 _legacy._decode_part = _decode_part
 
+
+def _streamlit_cloud_flow(st, state: str | None = None):
+    """Use the same OAuth flow that proved stable in PnimitD on Streamlit Cloud.
+
+    A return from Google can create a fresh Streamlit execution context. PKCE's
+    generated code_verifier is therefore not safe to keep only in memory. The
+    PnimitD app deliberately disables automatic PKCE generation for this
+    confidential Web OAuth client, so reproduce that behaviour here.
+    """
+    from google_auth_oauthlib.flow import Flow
+
+    section = st.secrets["google_oauth"]
+    client_config = {
+        "web": {
+            "client_id": section["client_id"],
+            "client_secret": section["client_secret"],
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "redirect_uris": [section["redirect_uri"]],
+        }
+    }
+    flow = Flow.from_client_config(
+        client_config,
+        scopes=_legacy.GOOGLE_SCOPES,
+        state=state,
+        autogenerate_code_verifier=False,
+    )
+    flow.redirect_uri = section["redirect_uri"]
+    return flow
+
+
+# Install the Streamlit-safe flow before exporting the legacy helpers. The
+# legacy authorization_url() and handle_oauth_callback() resolve _flow from
+# their own module at call time, so both sides of OAuth now use this function.
+_legacy._flow = _streamlit_cloud_flow
+
 for _name in dir(_legacy):
     if not _name.startswith("_"):
         globals()[_name] = getattr(_legacy, _name)
