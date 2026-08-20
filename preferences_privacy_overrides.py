@@ -103,8 +103,13 @@ def install(app_module) -> None:
             _clear_browser_planning_data()
 
         saved = _read_browser_state() or {}
-        original_text_input = st.text_input
-        original_data_editor = st.data_editor
+
+        # Always call the underlying DeltaGenerator methods rather than a
+        # possibly monkey-patched module-level function from an earlier rerun.
+        # This prevents wrapper recursion and duplicate Streamlit widget keys.
+        base = getattr(st, "_main", None)
+        original_text_input = base.text_input if base is not None else st.text_input
+        original_data_editor = base.data_editor if base is not None else st.data_editor
 
         captured = {
             "employee": str(saved.get("employee", "") or ""),
@@ -112,6 +117,7 @@ def install(app_module) -> None:
             "month": saved.get("month"),
             "days": saved.get("days", {}) if isinstance(saved.get("days", {}), dict) else {},
         }
+        clear_button_rendered = False
 
         def private_text_input(label, *args, **kwargs):
             if kwargs.get("key") == "preferences_employee":
@@ -123,6 +129,8 @@ def install(app_module) -> None:
             return original_text_input(label, *args, **kwargs)
 
         def private_data_editor(data, *args, **kwargs):
+            nonlocal clear_button_rendered
+
             key = str(kwargs.get("key", ""))
             if not key.startswith("preferences_table_"):
                 return original_data_editor(data, *args, **kwargs)
@@ -170,14 +178,16 @@ def install(app_module) -> None:
             captured["days"] = days
             _write_browser_state(captured)
 
-            if st.button(
-                "נקה את כל הטבלה",
-                width="stretch",
-                key=f"clear_all_preferences_table_{year}_{month}",
-            ):
-                _clear_browser_planning_data()
-                st.session_state[CLEAR_REQUEST_KEY] = True
-                st.rerun()
+            if not clear_button_rendered:
+                clear_button_rendered = True
+                if st.button(
+                    "נקה את כל הטבלה",
+                    width="stretch",
+                    key=f"clear_all_preferences_table_{year}_{month}_v2",
+                ):
+                    _clear_browser_planning_data()
+                    st.session_state[CLEAR_REQUEST_KEY] = True
+                    st.rerun()
 
             return edited
 
