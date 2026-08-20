@@ -59,14 +59,18 @@ def install(app_module) -> None:
                 if seen[name] == 1:
                     duplicate_status += " - החדשה ביותר"
 
+            # Streamlit's dataframe grid lays physical columns left-to-right even
+            # inside the RTL app. Store them in reverse physical order so the
+            # visual reading order from the right is: submission time, employee,
+            # blocks, vacations, notes, duplicate status.
             display_rows.append(
                 {
-                    "זמן הגשה": item["זמן הגשה"],
-                    "שם עובד": name,
-                    "חסימות": item["חסימות"],
-                    "חופשים": item["חופשים"],
-                    "הערות": item["הערות"],
                     "כפילות": duplicate_status,
+                    "הערות": item["הערות"],
+                    "חופשים": item["חופשים"],
+                    "חסימות": item["חסימות"],
+                    "שם עובד": name,
+                    "זמן הגשה": item["זמן הגשה"],
                 }
             )
 
