@@ -15,7 +15,10 @@ except Exception:
     streamlit_js_eval = None
 
 STATE_KEY = "medstaff_oncology_preferences_private_state_v1"
+CALENDAR_EVENTS_KEY = "medstaff_oncology_preferences_calendar_events_v1"
+CALENDAR_LABELS_KEY = "medstaff_oncology_loaded_calendar_labels_v1"
 TTL_SECONDS = 12 * 60 * 60
+CLEAR_REQUEST_KEY = "preferences_private_clear_all_requested_v1"
 
 
 def _read_browser_state():
@@ -57,6 +60,35 @@ def _write_browser_state(payload: dict) -> None:
         pass
 
 
+def _clear_browser_planning_data() -> None:
+    if streamlit_js_eval is None:
+        return
+    try:
+        expression = (
+            f"localStorage.removeItem('{STATE_KEY}');"
+            f"localStorage.removeItem('{CALENDAR_EVENTS_KEY}');"
+            f"localStorage.removeItem('{CALENDAR_LABELS_KEY}');"
+        )
+        streamlit_js_eval(
+            js_expressions=expression,
+            key="clear_preferences_private_all_v1",
+        )
+    except Exception:
+        pass
+
+
+def _clear_session_planning_data(st) -> None:
+    st.session_state.pop("preferences_calendar_events", None)
+    st.session_state.pop("preferences_loaded_calendar_labels", None)
+    for key in list(st.session_state.keys()):
+        if str(key).startswith("preferences_table_"):
+            st.session_state.pop(key, None)
+        elif str(key).startswith("preferences_simple_output_"):
+            st.session_state.pop(key, None)
+        elif str(key).startswith("preferences_machine_output_"):
+            st.session_state.pop(key, None)
+
+
 def install(app_module) -> None:
     if getattr(app_module, "_preferences_privacy_override_installed", False):
         return
@@ -65,6 +97,11 @@ def install(app_module) -> None:
 
     def private_tool_preferences() -> None:
         st = app_module.st
+
+        if st.session_state.pop(CLEAR_REQUEST_KEY, False):
+            _clear_session_planning_data(st)
+            _clear_browser_planning_data()
+
         saved = _read_browser_state() or {}
         original_text_input = st.text_input
         original_data_editor = st.data_editor
@@ -132,6 +169,16 @@ def install(app_module) -> None:
             captured["month"] = month
             captured["days"] = days
             _write_browser_state(captured)
+
+            if st.button(
+                "נקה את כל הטבלה",
+                width="stretch",
+                key=f"clear_all_preferences_table_{year}_{month}",
+            ):
+                _clear_browser_planning_data()
+                st.session_state[CLEAR_REQUEST_KEY] = True
+                st.rerun()
+
             return edited
 
         st.text_input = private_text_input
