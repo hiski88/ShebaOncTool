@@ -90,6 +90,10 @@ def _merge(existing: dict[str, list[str]], new: dict[str, list[str]]) -> dict[st
     return merged
 
 
+def _event_count(events_by_date: dict[str, list[str]]) -> int:
+    return sum(len(items) for items in events_by_date.values())
+
+
 def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, list[str]]:
     st.subheader("אירועים מהיומנים האישיים")
     st.caption("טוענים יומן אחד, ואם צריך מוסיפים יומן שני. האירועים מצטברים ואינם מסמנים חסימה אוטומטית.")
@@ -109,7 +113,7 @@ def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, lis
 
     if events_by_date:
         loaded_text = ", ".join(loaded_labels[:2]) if loaded_labels else "היומנים שנטענו"
-        st.success(f"נשמרו אירועים מ-{loaded_text}. ניתן להוסיף יומן נוסף בלי למחוק אותם.")
+        st.success(f"נשמרו {_event_count(events_by_date)} אירועים מ-{loaded_text}. ניתן להוסיף יומן נוסף בלי למחוק אותם.")
 
     if not oauth_dependencies_available():
         st.info("חיבור היומן אינו זמין כרגע בסביבת האפליקציה.")
@@ -121,20 +125,22 @@ def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, lis
     credentials = get_credentials(st)
     if credentials is None:
         st.link_button("התחברות ל-Google Calendar", authorization_url(st), width="stretch")
-        st.caption("החיבור הוא לקריאה בלבד. אירועים שכבר נטענו נשמרים במכשיר זה.")
+        st.caption("החיבור הוא לקריאה בלבד. לאחר החזרה מ-Google בוחרים יומן ולוחצים על טעינה.")
         return events_by_date
+
+    st.success("מחובר ל-Google Calendar")
 
     try:
         service = build_service(credentials)
         calendars = list_readable_calendars(service)
     except Exception as exc:
-        st.warning(f"לא ניתן לקרוא את רשימת היומנים: {exc}")
+        st.error(f"החיבור ל-Google הצליח, אך לא ניתן לקרוא את רשימת היומנים: {exc}")
         return events_by_date
 
     options = {item["label"]: item for item in calendars}
     labels = list(options)
     if not labels:
-        st.warning("לא נמצאו יומנים זמינים בחשבון Google המחובר.")
+        st.warning("החיבור ל-Google הצליח, אך לא נמצאו יומנים זמינים בחשבון המחובר.")
         return events_by_date
 
     selected_label = st.selectbox(
@@ -166,18 +172,25 @@ def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, lis
                     month,
                     config.get("timezone", "Asia/Jerusalem"),
                 )
-                merged = _merge(events_by_date, loaded)
-                st.session_state["preferences_calendar_events"] = merged
-                if selected_label not in loaded_labels:
-                    loaded_labels = [*loaded_labels, selected_label][:2]
-                    st.session_state["preferences_loaded_calendar_labels"] = loaded_labels
-                _save_json(LOCAL_STORAGE_KEY, merged)
-                _save_json(LOADED_CALENDARS_KEY, loaded_labels)
-                events_by_date = merged
-                if len(loaded_labels) == 1:
-                    st.success("היומן נטען. ניתן עכשיו לבחור יומן נוסף ולטעון גם אותו.")
+                loaded_count = _event_count(loaded)
+                if loaded_count == 0:
+                    st.warning(
+                        f"החיבור תקין, אך לא נמצאו אירועים ביומן '{selected_label}' עבור החודש שנבחר. "
+                        "בדוק שנבחרו החודש והשנה הנכונים ושהאירועים נמצאים ביומן הזה."
+                    )
                 else:
-                    st.success("היומן נוסף. האירועים משני היומנים מוצגים יחד.")
+                    merged = _merge(events_by_date, loaded)
+                    st.session_state["preferences_calendar_events"] = merged
+                    if selected_label not in loaded_labels:
+                        loaded_labels = [*loaded_labels, selected_label][:2]
+                        st.session_state["preferences_loaded_calendar_labels"] = loaded_labels
+                    _save_json(LOCAL_STORAGE_KEY, merged)
+                    _save_json(LOADED_CALENDARS_KEY, loaded_labels)
+                    events_by_date = merged
+                    if len(loaded_labels) == 1:
+                        st.success(f"נטענו {loaded_count} אירועים. ניתן עכשיו לבחור יומן נוסף ולטעון גם אותו.")
+                    else:
+                        st.success(f"נוספו {loaded_count} אירועים. האירועים משני היומנים מוצגים יחד.")
             except Exception as exc:
                 st.error(f"טעינת אירועי היומן נכשלה: {exc}")
 
