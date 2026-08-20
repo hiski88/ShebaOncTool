@@ -1,11 +1,14 @@
-"""Keep Tool 1 output synchronized while hiding unnecessary helper text."""
+"""Keep Tool 1 output synchronized and render its final actions in one place."""
 from __future__ import annotations
 
 import html
 import json
+import re
 from contextlib import nullcontext
 
 import streamlit.components.v1 as components
+
+from google_sheets_submissions import configured, submit_preferences
 
 
 VISIBLE_OUTPUT_LABEL = "טקסט להעתקה"
@@ -18,6 +21,7 @@ HIDDEN_CAPTIONS = {
 HIDDEN_WARNINGS = {
     "יש תאריכים שסומנו גם כחופש וגם כחסימה. המערכת תשמור את שני הסימונים.",
 }
+_MONTH_FROM_FILENAME = re.compile(r"_(\d{4})_(\d{2})\.xlsx$")
 
 
 def _render_copy_button(value: str) -> None:
@@ -73,20 +77,28 @@ def _render_copy_button(value: str) -> None:
 
 
 def install(app_module) -> None:
-    """Keep the simple output live and remove technical/help text from the UI."""
+    """Render submit, copy, and Excel download exactly once and in that order."""
     if getattr(app_module, "_preferences_output_override_installed", False):
         return
 
     original = app_module.tool_preferences
 
-    def tool_preferences_with_live_output() -> None:
-        original_text_area = app_module.st.text_area
-        original_expander = app_module.st.expander
-        original_caption = app_module.st.caption
-        original_warning = app_module.st.warning
-        original_download_button = app_module.st.download_button
-        visible_output = {"value": ""}
-        copy_rendered = {"value": False}
+    def tool_preferences_with_actions() -> None:
+        st = app_module.st
+        original_text_area = st.text_area
+        original_text_input = st.text_input
+        original_data_editor = st.data_editor
+        original_expander = st.expander
+        original_caption = st.caption
+        original_warning = st.warning
+        original_download_button = st.download_button
+
+        captured = {
+            "visible_output": "",
+            "employee": "",
+            "edited": None,
+            "actions_rendered": False,
+        }
 
         def live_text_area(label, *args, **kwargs):
             if label == HIDDEN_OUTPUT_LABEL:
@@ -98,11 +110,27 @@ def install(app_module) -> None:
 
             if label == VISIBLE_OUTPUT_LABEL:
                 value = kwargs.get("value", args[0] if args else "")
-                visible_output["value"] = str(value or "")
+                captured["visible_output"] = str(value or "")
                 key = kwargs.get("key")
                 if key:
-                    app_module.st.session_state[key] = value
+                    st.session_state[key] = value
             return original_text_area(label, *args, **kwargs)
+
+        def capture_text_input(label, *args, **kwargs):
+            value = original_text_input(label, *args, **kwargs)
+            if kwargs.get("key") == "preferences_employee":
+                captured["employee"] = str(value or "")
+            return value
+
+        def capture_data_editor(data, *args, **kwargs):
+            edited = original_data_editor(data, *args, **kwargs)
+            try:
+                required = {"תאריך", "חסימה", "חופש", "הערה"}
+                if required.issubset(set(edited.columns)):
+                    captured["edited"] = edited
+            except Exception:
+                pass
+            return edited
 
         def simplified_expander(label, *args, **kwargs):
             if label == HIDDEN_EXPANDER_LABEL:
@@ -121,24 +149,56 @@ def install(app_module) -> None:
 
         def ordered_download_button(label, *args, **kwargs):
             file_name = str(kwargs.get("file_name", "") or "")
-            if file_name.startswith("העדפות_") and not copy_rendered["value"]:
-                _render_copy_button(visible_output["value"])
-                copy_rendered["value"] = True
+            is_preferences_download = file_name.startswith("העדפות_")
+
+            if is_preferences_download and not captured["actions_rendered"]:
+                captured["actions_rendered"] = True
+                match = _MONTH_FROM_FILENAME.search(file_name)
+                year = int(match.group(1)) if match else None
+                month = int(match.group(2)) if match else None
+                employee = str(captured.get("employee") or "").strip()
+                edited = captured.get("edited")
+                ready = bool(employee and edited is not None and year is not None and month is not None)
+                sheets_ready = configured(st)
+
+                if ready:
+                    if st.button(
+                        "הגש העדפות",
+                        type="primary",
+                        width="stretch",
+                        key=f"submit_preferences_{year}_{month}",
+                        disabled=not sheets_ready,
+                    ):
+                        try:
+                            values = submit_preferences(st, employee, year, month, edited)
+                            st.success(f"ההעדפות של {values[1]} לחודש {values[2]} נקלטו בהצלחה.")
+                        except Exception as exc:
+                            st.error(f"הגשת ההעדפות נכשלה: {exc}")
+
+                if ready and not sheets_ready:
+                    st.caption("הגשה למאגר תופעל לאחר השלמת חיבור Google Sheets של המערכת.")
+
+                _render_copy_button(captured["visible_output"])
+
             return original_download_button(label, *args, **kwargs)
 
-        app_module.st.text_area = live_text_area
-        app_module.st.expander = simplified_expander
-        app_module.st.caption = filtered_caption
-        app_module.st.warning = filtered_warning
-        app_module.st.download_button = ordered_download_button
+        st.text_area = live_text_area
+        st.text_input = capture_text_input
+        st.data_editor = capture_data_editor
+        st.expander = simplified_expander
+        st.caption = filtered_caption
+        st.warning = filtered_warning
+        st.download_button = ordered_download_button
         try:
             original()
         finally:
-            app_module.st.text_area = original_text_area
-            app_module.st.expander = original_expander
-            app_module.st.caption = original_caption
-            app_module.st.warning = original_warning
-            app_module.st.download_button = original_download_button
+            st.text_area = original_text_area
+            st.text_input = original_text_input
+            st.data_editor = original_data_editor
+            st.expander = original_expander
+            st.caption = original_caption
+            st.warning = original_warning
+            st.download_button = original_download_button
 
-    app_module.tool_preferences = tool_preferences_with_live_output
+    app_module.tool_preferences = tool_preferences_with_actions
     app_module._preferences_output_override_installed = True
