@@ -19,6 +19,7 @@ CALENDAR_EVENTS_KEY = "medstaff_oncology_preferences_calendar_events_v1"
 CALENDAR_LABELS_KEY = "medstaff_oncology_loaded_calendar_labels_v1"
 TTL_SECONDS = 12 * 60 * 60
 CLEAR_REQUEST_KEY = "preferences_private_clear_all_requested_v1"
+RESET_VERSION_KEY = "preferences_private_table_reset_version_v1"
 
 
 def _read_browser_state():
@@ -81,11 +82,12 @@ def _clear_session_planning_data(st) -> None:
     st.session_state.pop("preferences_calendar_events", None)
     st.session_state.pop("preferences_loaded_calendar_labels", None)
     for key in list(st.session_state.keys()):
-        if str(key).startswith("preferences_table_"):
+        text = str(key)
+        if text.startswith("preferences_table_"):
             st.session_state.pop(key, None)
-        elif str(key).startswith("preferences_simple_output_"):
+        elif text.startswith("preferences_simple_output_"):
             st.session_state.pop(key, None)
-        elif str(key).startswith("preferences_machine_output_"):
+        elif text.startswith("preferences_machine_output_"):
             st.session_state.pop(key, None)
 
 
@@ -98,11 +100,14 @@ def install(app_module) -> None:
     def private_tool_preferences() -> None:
         st = app_module.st
 
-        if st.session_state.pop(CLEAR_REQUEST_KEY, False):
+        cleared_now = bool(st.session_state.pop(CLEAR_REQUEST_KEY, False))
+        if cleared_now:
             _clear_session_planning_data(st)
             _clear_browser_planning_data()
 
-        saved = _read_browser_state() or {}
+        # Do not immediately reload stale browser data on the rerun that follows
+        # a clear action. The clean table rendered below becomes the new state.
+        saved = {} if cleared_now else (_read_browser_state() or {})
 
         # Always call the underlying DeltaGenerator methods rather than a
         # possibly monkey-patched module-level function from an earlier rerun.
@@ -111,6 +116,7 @@ def install(app_module) -> None:
         original_text_input = base.text_input if base is not None else st.text_input
         original_data_editor = base.data_editor if base is not None else st.data_editor
 
+        reset_version = int(st.session_state.get(RESET_VERSION_KEY, 0) or 0)
         captured = {
             "employee": str(saved.get("employee", "") or ""),
             "year": saved.get("year"),
@@ -131,12 +137,12 @@ def install(app_module) -> None:
         def private_data_editor(data, *args, **kwargs):
             nonlocal clear_button_rendered
 
-            key = str(kwargs.get("key", ""))
-            if not key.startswith("preferences_table_"):
+            source_key = str(kwargs.get("key", ""))
+            if not source_key.startswith("preferences_table_"):
                 return original_data_editor(data, *args, **kwargs)
 
             try:
-                parts = key.rsplit("_", 2)
+                parts = source_key.rsplit("_", 2)
                 year = int(parts[-2])
                 month = int(parts[-1])
             except Exception:
@@ -156,7 +162,13 @@ def install(app_module) -> None:
                     table.at[idx, "חופש"] = bool(day.get("vacation", False))
                     table.at[idx, "הערה"] = str(day.get("note", "") or "")
 
-            edited = original_data_editor(table, *args, **kwargs)
+            # A reset version is appended to the actual widget key. Incrementing
+            # it guarantees that Streamlit cannot reuse stale checkbox edits
+            # after the user clears the table.
+            editor_kwargs = dict(kwargs)
+            editor_kwargs["key"] = f"{source_key}_reset_{reset_version}"
+            edited = original_data_editor(table, *args, **editor_kwargs)
+
             days = {}
             try:
                 for _, row in edited.iterrows():
@@ -183,9 +195,10 @@ def install(app_module) -> None:
                 if st.button(
                     "נקה את כל הטבלה",
                     width="stretch",
-                    key=f"clear_all_preferences_table_{year}_{month}_v2",
+                    key=f"clear_all_preferences_table_{year}_{month}_v3",
                 ):
                     _clear_browser_planning_data()
+                    st.session_state[RESET_VERSION_KEY] = reset_version + 1
                     st.session_state[CLEAR_REQUEST_KEY] = True
                     st.rerun()
 
