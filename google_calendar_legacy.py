@@ -11,10 +11,9 @@ from typing import Any, Iterable
 
 from core import CalendarEvent
 
-GOOGLE_SCOPES = [
-    "https://www.googleapis.com/auth/calendar.events",
-    "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
-]
+# Tool 1 only reads personal calendars. Tool 3 exports ICS and no longer writes
+# directly to Google Calendar, so request the minimum permission required.
+GOOGLE_SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 
 
 def oauth_dependencies_available() -> bool:
@@ -161,6 +160,7 @@ def build_service(credentials):
 
 
 def list_writable_calendars(service) -> list[dict[str, str]]:
+    """Compatibility helper retained for older code paths."""
     calendars: list[dict[str, str]] = []
     page_token = None
     while True:
@@ -203,6 +203,7 @@ def create_events(
     events: Iterable[CalendarEvent],
     timezone_name: str = "Asia/Jerusalem",
 ) -> dict[str, Any]:
+    """Legacy compatibility path. Tool 3 no longer calls this function."""
     from googleapiclient.errors import HttpError
 
     created = 0
