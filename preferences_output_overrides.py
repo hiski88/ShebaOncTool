@@ -26,7 +26,6 @@ def _render_copy_button(value: str) -> None:
 
     value_json = json.dumps(value, ensure_ascii=False)
     button_label = html.escape("העתקה")
-    copied_label = html.escape("הועתק")
     components.html(
         f"""
         <div dir="rtl" style="font-family: sans-serif; margin-top: -4px; margin-bottom: 8px;">
@@ -85,7 +84,9 @@ def install(app_module) -> None:
         original_expander = app_module.st.expander
         original_caption = app_module.st.caption
         original_warning = app_module.st.warning
+        original_download_button = app_module.st.download_button
         visible_output = {"value": ""}
+        copy_rendered = {"value": False}
 
         def live_text_area(label, *args, **kwargs):
             if label == HIDDEN_OUTPUT_LABEL:
@@ -118,18 +119,26 @@ def install(app_module) -> None:
                 return None
             return original_warning(body, *args, **kwargs)
 
+        def ordered_download_button(label, *args, **kwargs):
+            file_name = str(kwargs.get("file_name", "") or "")
+            if file_name.startswith("העדפות_") and not copy_rendered["value"]:
+                _render_copy_button(visible_output["value"])
+                copy_rendered["value"] = True
+            return original_download_button(label, *args, **kwargs)
+
         app_module.st.text_area = live_text_area
         app_module.st.expander = simplified_expander
         app_module.st.caption = filtered_caption
         app_module.st.warning = filtered_warning
+        app_module.st.download_button = ordered_download_button
         try:
             original()
-            _render_copy_button(visible_output["value"])
         finally:
             app_module.st.text_area = original_text_area
             app_module.st.expander = original_expander
             app_module.st.caption = original_caption
             app_module.st.warning = original_warning
+            app_module.st.download_button = original_download_button
 
     app_module.tool_preferences = tool_preferences_with_live_output
     app_module._preferences_output_override_installed = True
