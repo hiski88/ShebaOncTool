@@ -21,12 +21,14 @@ def install(app_module) -> None:
         )
 
         st.subheader("שעות תורנות")
-        st.caption("אלו ערכי ברירת מחדל בלבד. ניתן לשנות אותם לפני יצירת קובץ ICS או כתיבה ליומן Google.")
+        st.caption(
+            "השעות משמשות בעיקר להצגה מסודרת ביומן. אלו ערכי ברירת מחדל בלבד וניתן לשנות אותם לפני יצירת ICS או כתיבה ליומן Google."
+        )
 
-        col_department, col_er, col_day_hospital = st.columns(3)
+        col_department, col_saturday, col_er, col_day_hospital = st.columns(4)
 
         with col_department:
-            st.markdown("**תורנות מחלקה**")
+            st.markdown("**תורנות מחלקה - א'-ו'**")
             department_start = st.time_input(
                 "התחלה",
                 value=time(8, 0),
@@ -36,6 +38,19 @@ def install(app_module) -> None:
                 "סיום ביום למחרת",
                 value=time(10, 0),
                 key="calendar_department_end",
+            )
+
+        with col_saturday:
+            st.markdown("**תורנות מחלקה - שבת**")
+            saturday_start = st.time_input(
+                "התחלה בשבת",
+                value=time(9, 0),
+                key="calendar_saturday_start",
+            )
+            saturday_end = st.time_input(
+                "סיום ביום ראשון",
+                value=time(10, 0),
+                key="calendar_saturday_end",
             )
 
         with col_er:
@@ -66,7 +81,7 @@ def install(app_module) -> None:
 
         defaults = app_module.CONFIG.setdefault("event_defaults", {})
 
-        for code in ("ward_duty_regular", "ward_duty_friday", "ward_duty_saturday"):
+        for code in ("ward_duty_regular", "ward_duty_friday"):
             settings = defaults.setdefault(code, {})
             settings.update(
                 {
@@ -77,6 +92,17 @@ def install(app_module) -> None:
                     "create": True,
                 }
             )
+
+        saturday_settings = defaults.setdefault("ward_duty_saturday", {})
+        saturday_settings.update(
+            {
+                "all_day": False,
+                "start": saturday_start.strftime("%H:%M"),
+                "end": saturday_end.strftime("%H:%M"),
+                "end_day_offset": 1,
+                "create": True,
+            }
+        )
 
         er_settings = defaults.setdefault("er_duty", {})
         er_settings.update(
