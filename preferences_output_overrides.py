@@ -171,7 +171,10 @@ def install(app_module) -> None:
                     ):
                         try:
                             values = submit_preferences(st, employee, year, month, edited)
-                            st.success(f"ההעדפות של {values[1]} לחודש {values[2]} נקלטו בהצלחה.")
+                            display_month = f"{month:02d}-{year:04d}"
+                            st.success(
+                                f"ההעדפות של {values[1]} לחודש {display_month} נקלטו בהצלחה."
+                            )
                         except Exception as exc:
                             st.error(f"הגשת ההעדפות נכשלה: {exc}")
 
