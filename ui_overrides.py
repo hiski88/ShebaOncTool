@@ -59,6 +59,7 @@ def install(app_module) -> None:
         [data-testid="stMarkdownContainer"],
         [data-testid="stWidgetLabel"],
         [data-testid="stCaptionContainer"],
+        [data-testid="stColumn"],
         label, p, h1, h2, h3, h4, h5, h6 {
             direction: rtl !important;
             text-align: right !important;
@@ -75,20 +76,24 @@ def install(app_module) -> None:
             text-align: right !important;
         }
 
-        /* Clock values are numeric LTR content inside an RTL application. */
-        input[type="time"],
+        /* Keep the time widget itself RTL/right-aligned. Only the numeric clock
+           value is LTR so 08:00 is not visually reversed. */
         [data-testid="stTimeInput"],
-        [data-testid="stTimeInput"] *,
+        [data-testid="stTimeInput"] > div,
+        [data-testid="stTimeInput"] label,
+        [data-testid="stTimeInput"] [data-testid="stWidgetLabel"] {
+            direction: rtl !important;
+            text-align: right !important;
+        }
+
+        input[type="time"],
         [data-testid="stTimeInput"] input,
         [data-testid="stTimeInput"] input[type="time"] {
             direction: ltr !important;
-            text-align: left !important;
+            text-align: right !important;
             unicode-bidi: isolate !important;
         }
 
-        /* Chrome / Chromium keeps the hour and minute fields as internal
-           datetime-edit controls. They must also be forced to LTR or 08:00
-           is visually rendered as 00:08 in an RTL document. */
         input[type="time"]::-webkit-datetime-edit,
         input[type="time"]::-webkit-datetime-edit-fields-wrapper,
         input[type="time"]::-webkit-datetime-edit-hour-field,
@@ -98,7 +103,7 @@ def install(app_module) -> None:
         input[type="time"]::-webkit-datetime-edit-text {
             direction: ltr !important;
             unicode-bidi: isolate !important;
-            text-align: left !important;
+            text-align: right !important;
         }
 
         section[data-testid="stSidebar"],
