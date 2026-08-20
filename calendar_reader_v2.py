@@ -21,53 +21,66 @@ except Exception:
     streamlit_js_eval = None
 
 LOCAL_STORAGE_KEY = "medstaff_oncology_preferences_calendar_events_v1"
+LOADED_CALENDARS_KEY = "medstaff_oncology_loaded_calendar_labels_v1"
+
+
+def _load_json(key: str, default):
+    if streamlit_js_eval is None:
+        return default
+    try:
+        raw = streamlit_js_eval(
+            js_expressions=f"localStorage.getItem('{key}')",
+            key=f"load_{key}",
+        )
+        if not raw:
+            return default
+        value = json.loads(raw)
+        return value
+    except Exception:
+        return default
+
+
+def _save_json(key: str, value) -> None:
+    if streamlit_js_eval is None:
+        return
+    try:
+        payload = json.dumps(value, ensure_ascii=False)
+        streamlit_js_eval(
+            js_expressions=f"localStorage.setItem('{key}', {json.dumps(payload)});",
+            key=f"save_{key}",
+        )
+    except Exception:
+        pass
+
+
+def _remove_local(key: str) -> None:
+    if streamlit_js_eval is None:
+        return
+    try:
+        streamlit_js_eval(
+            js_expressions=f"localStorage.removeItem('{key}');",
+            key=f"clear_{key}",
+        )
+    except Exception:
+        pass
 
 
 def _load_local_events() -> dict[str, list[str]]:
-    if streamlit_js_eval is None:
+    payload = _load_json(LOCAL_STORAGE_KEY, {})
+    if not isinstance(payload, dict):
         return {}
-    try:
-        raw = streamlit_js_eval(
-            js_expressions=f"localStorage.getItem('{LOCAL_STORAGE_KEY}')",
-            key="load_oncology_calendar_events_local_storage",
-        )
-        if not raw:
-            return {}
-        payload = json.loads(raw)
-        if not isinstance(payload, dict):
-            return {}
-        return {
-            str(day): [str(item) for item in items]
-            for day, items in payload.items()
-            if isinstance(items, list)
-        }
-    except Exception:
-        return {}
+    return {
+        str(day): [str(item) for item in items]
+        for day, items in payload.items()
+        if isinstance(items, list)
+    }
 
 
-def _save_local_events(events: dict[str, list[str]]) -> None:
-    if streamlit_js_eval is None:
-        return
-    try:
-        payload = json.dumps(events, ensure_ascii=False)
-        streamlit_js_eval(
-            js_expressions=f"localStorage.setItem('{LOCAL_STORAGE_KEY}', {json.dumps(payload)});",
-            key="save_oncology_calendar_events_local_storage",
-        )
-    except Exception:
-        pass
-
-
-def _clear_local_events() -> None:
-    if streamlit_js_eval is None:
-        return
-    try:
-        streamlit_js_eval(
-            js_expressions=f"localStorage.removeItem('{LOCAL_STORAGE_KEY}');",
-            key="clear_oncology_calendar_events_local_storage",
-        )
-    except Exception:
-        pass
+def _load_local_calendar_labels() -> list[str]:
+    payload = _load_json(LOADED_CALENDARS_KEY, [])
+    if not isinstance(payload, list):
+        return []
+    return [str(item) for item in payload]
 
 
 def _merge(existing: dict[str, list[str]], new: dict[str, list[str]]) -> dict[str, list[str]]:
@@ -79,7 +92,7 @@ def _merge(existing: dict[str, list[str]], new: dict[str, list[str]]) -> dict[st
 
 def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, list[str]]:
     st.subheader("אירועים מהיומנים האישיים")
-    st.caption("אפשר לטעון עד שני יומנים. האירועים מוצגים לעזר בלבד ואינם מסמנים חסימה אוטומטית.")
+    st.caption("טוענים יומן אחד, ואם צריך מוסיפים יומן שני. האירועים מצטברים ואינם מסמנים חסימה אוטומטית.")
 
     if "preferences_calendar_events" not in st.session_state:
         st.session_state["preferences_calendar_events"] = _load_local_events()
@@ -88,21 +101,27 @@ def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, lis
         if browser_events:
             st.session_state["preferences_calendar_events"] = browser_events
 
+    if "preferences_loaded_calendar_labels" not in st.session_state:
+        st.session_state["preferences_loaded_calendar_labels"] = _load_local_calendar_labels()
+
     events_by_date = st.session_state.get("preferences_calendar_events", {})
+    loaded_labels = st.session_state.get("preferences_loaded_calendar_labels", [])
 
     if events_by_date:
-        st.success("אירועי יומן שכבר נטענו נשמרים במכשיר זה ומוצגים גם לאחר רענון.")
+        loaded_text = ", ".join(loaded_labels[:2]) if loaded_labels else "היומנים שנטענו"
+        st.success(f"נשמרו אירועים מ-{loaded_text}. ניתן להוסיף יומן נוסף בלי למחוק אותם.")
 
     if not oauth_dependencies_available():
-        st.info("חיבור Google Calendar אינו זמין כרגע. ניתן להמשיך לתכנן ידנית.")
+        st.info("חיבור היומן אינו זמין כרגע בסביבת האפליקציה.")
         return events_by_date
     if not oauth_configured(st):
-        st.info("חיבור Google Calendar טרם הוגדר באפליקציה. ניתן להמשיך לתכנן ידנית.")
+        st.info("נדרשת הגדרה חד-פעמית של חיבור Google Calendar ב-Streamlit כדי לאפשר טעינת יומנים.")
         return events_by_date
 
     credentials = get_credentials(st)
     if credentials is None:
         st.link_button("התחברות ל-Google Calendar", authorization_url(st), width="stretch")
+        st.caption("החיבור הוא לקריאה בלבד. אירועים שכבר נטענו נשמרים במכשיר זה.")
         return events_by_date
 
     try:
@@ -114,48 +133,68 @@ def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, lis
 
     options = {item["label"]: item for item in calendars}
     labels = list(options)
-    selected_labels = st.multiselect(
-        "בחירת יומנים להצגה",
+    if not labels:
+        st.warning("לא נמצאו יומנים זמינים בחשבון Google המחובר.")
+        return events_by_date
+
+    selected_label = st.selectbox(
+        "בחירת יומן לטעינה",
         labels,
-        max_selections=2,
-        help="ניתן לבחור יומן אחד או שניים. טעינה נוספת מצטרפת לאירועים שכבר נטענו.",
-        key="preferences_calendar_selection_v2",
+        key="preferences_calendar_single_selection_v3",
     )
 
-    st.caption("בחר יומן אחד או שניים ולחץ על טעינה. ניתן לחזור בהמשך ולצרף יומן נוסף בלי למחוק את האירועים שכבר נטענו.")
+    already_loaded = selected_label in loaded_labels
+    if already_loaded:
+        st.caption("יומן זה כבר נטען. טעינה נוספת רק תשלים אירועים חסרים ולא תיצור כפילויות.")
+    elif len(loaded_labels) >= 2:
+        st.warning("כבר נטענו שני יומנים. כדי לבחור אחרים יש לנקות את האירועים ולהתחיל מחדש.")
 
     col_load, col_clear, col_disconnect = st.columns([2, 1, 1])
     with col_load:
-        if st.button("טען אירועים מהיומנים", type="primary", width="stretch", key="load_preferences_calendars_v2"):
-            if not selected_labels:
-                st.warning("יש לבחור לפחות יומן אחד.")
-            else:
-                selected = [options[label] for label in selected_labels]
-                try:
-                    loaded = read_calendar_events(
-                        service,
-                        selected,
-                        year,
-                        month,
-                        config.get("timezone", "Asia/Jerusalem"),
-                    )
-                    merged = _merge(events_by_date, loaded)
-                    st.session_state["preferences_calendar_events"] = merged
-                    _save_local_events(merged)
-                    events_by_date = merged
-                    st.success("אירועי היומן נטענו ונשמרו במכשיר זה.")
-                except Exception as exc:
-                    st.error(f"טעינת אירועי היומן נכשלה: {exc}")
+        if st.button(
+            "טען את היומן",
+            type="primary",
+            width="stretch",
+            key="load_preferences_calendar_v3",
+            disabled=(len(loaded_labels) >= 2 and not already_loaded),
+        ):
+            try:
+                loaded = read_calendar_events(
+                    service,
+                    [options[selected_label]],
+                    year,
+                    month,
+                    config.get("timezone", "Asia/Jerusalem"),
+                )
+                merged = _merge(events_by_date, loaded)
+                st.session_state["preferences_calendar_events"] = merged
+                if selected_label not in loaded_labels:
+                    loaded_labels = [*loaded_labels, selected_label][:2]
+                    st.session_state["preferences_loaded_calendar_labels"] = loaded_labels
+                _save_json(LOCAL_STORAGE_KEY, merged)
+                _save_json(LOADED_CALENDARS_KEY, loaded_labels)
+                events_by_date = merged
+                if len(loaded_labels) == 1:
+                    st.success("היומן נטען. ניתן עכשיו לבחור יומן נוסף ולטעון גם אותו.")
+                else:
+                    st.success("היומן נוסף. האירועים משני היומנים מוצגים יחד.")
+            except Exception as exc:
+                st.error(f"טעינת אירועי היומן נכשלה: {exc}")
+
     with col_clear:
-        if st.button("נקה אירועים", width="stretch", key="clear_preferences_calendars_v2"):
+        if st.button("נקה אירועים", width="stretch", key="clear_preferences_calendars_v3"):
             st.session_state["preferences_calendar_events"] = {}
-            _clear_local_events()
+            st.session_state["preferences_loaded_calendar_labels"] = []
+            _remove_local(LOCAL_STORAGE_KEY)
+            _remove_local(LOADED_CALENDARS_KEY)
             events_by_date = {}
-            st.success("אירועי היומן נוקו מהמכשיר הזה.")
+            st.success("אירועי היומנים נוקו מהמכשיר הזה.")
+
     with col_disconnect:
-        if st.button("נתק יומן", width="stretch", key="disconnect_preferences_calendar_v2"):
-            _save_local_events(events_by_date)
+        if st.button("נתק Google", width="stretch", key="disconnect_preferences_calendar_v3"):
+            _save_json(LOCAL_STORAGE_KEY, events_by_date)
+            _save_json(LOADED_CALENDARS_KEY, loaded_labels)
             disconnect(st)
-            st.info("החיבור נותק. האירועים שכבר נטענו נשמרו במכשיר ולא נמחקו.")
+            st.info("החיבור נותק. האירועים שכבר נטענו נשארו שמורים במכשיר.")
 
     return events_by_date
