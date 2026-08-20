@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 
 import streamlit as st
 
@@ -22,6 +23,7 @@ except Exception:
 
 LOCAL_STORAGE_KEY = "medstaff_oncology_preferences_calendar_events_v1"
 LOADED_CALENDARS_KEY = "medstaff_oncology_loaded_calendar_labels_v1"
+LOCAL_TTL_SECONDS = 12 * 60 * 60
 
 
 def _load_json(key: str, default):
@@ -34,8 +36,15 @@ def _load_json(key: str, default):
         )
         if not raw:
             return default
-        value = json.loads(raw)
-        return value
+        payload = json.loads(raw)
+        # Privacy migration: old values had no expiry. Do not keep them.
+        if not isinstance(payload, dict) or "expires_at" not in payload or "value" not in payload:
+            _remove_local(key)
+            return default
+        if float(payload.get("expires_at", 0)) <= time.time():
+            _remove_local(key)
+            return default
+        return payload.get("value", default)
     except Exception:
         return default
 
@@ -44,7 +53,11 @@ def _save_json(key: str, value) -> None:
     if streamlit_js_eval is None:
         return
     try:
-        payload = json.dumps(value, ensure_ascii=False)
+        envelope = {
+            "expires_at": time.time() + LOCAL_TTL_SECONDS,
+            "value": value,
+        }
+        payload = json.dumps(envelope, ensure_ascii=False)
         streamlit_js_eval(
             js_expressions=f"localStorage.setItem('{key}', {json.dumps(payload)});",
             key=f"save_{key}",
