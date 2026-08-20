@@ -37,6 +37,7 @@
     {"terms": ["א\"ת", "א״ת", "א׳ת", "אחרי תורנות"], "code": "after_duty", "label": "אחרי תורנות", "kind": "status"},
     {"terms": ["חופש", "חופשה"], "code": "vacation", "label": "חופש", "kind": "status"},
     {"terms": ["היעדרות"], "code": "absence", "label": "היעדרות", "kind": "status"},
+    {"terms": ["מחלה", "חולה"], "code": "sick_leave", "label": "מחלה", "kind": "status"},
     {"terms": ["מחקר"], "code": "research", "label": "מחקר", "kind": "task"},
     {"terms": ["יום עיון", "כנס"], "code": "study_day", "label": "יום עיון / כנס", "kind": "task"},
     {"terms": ["אשפוז יום", "א.יום", "א יום"], "code": "day_hospital", "label": "אשפוז יום", "kind": "task"},
@@ -48,7 +49,7 @@
     {"terms": ["תוכנית שחר", "תכנית שחר"], "code": "shahar_program", "label": "תוכנית שחר", "kind": "task"}
   ],
   "non_name_terms": [
-    "ATT", "א\"ת", "א״ת", "אחרי תורנות", "חופש", "חופשה", "מחקר", "יום עיון", "כנס",
+    "ATT", "א\"ת", "א״ת", "אחרי תורנות", "חופש", "חופשה", "מחלה", "חולה", "מחקר", "יום עיון", "כנס",
     "אשפוז יום", "א.יום", "מיון", "מיון אונקולוגי", "אבחון מהיר", "א.מהיר", "תגבור מיון",
     "מחלקה", "קרינה", "מרפאות", "ריאות", "שד", "מלנומה", "סרקומה", "חוזרים", "תלפיות",
     "פליאציה", "תוכנית שחר", "תכנית שחר", "היעדרות", "אחר"
@@ -81,6 +82,7 @@
     "vacation": "חופש",
     "absence": "היעדרות",
     "absence_other": "היעדרויות / אחר",
+    "sick_leave": "מחלה",
     "radiation": "קרינה"
   },
   "event_defaults": {
@@ -111,6 +113,7 @@
     "vacation": {"all_day": true, "create": false},
     "absence": {"all_day": true, "create": false},
     "absence_other": {"all_day": true, "create": false},
+    "sick_leave": {"all_day": true, "create": false},
     "radiation": {"all_day": true, "create": true}
   },
   "staffing_rules": {
