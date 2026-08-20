@@ -10,6 +10,7 @@ from calendar_reader_v2 import render_calendar_reader as render_calendar_reader_
 from calendar_time_overrides import install as install_calendar_time_overrides
 from google_calendar import handle_oauth_callback
 from preferences_output_overrides import install as install_preferences_output_overrides
+from preferences_privacy_overrides import install as install_preferences_privacy_overrides
 from tool3_minimal_overrides import install as install_tool3_minimal_overrides
 from ui_overrides import install as install_ui_overrides
 
@@ -31,6 +32,7 @@ def _calendar_reader(year: int, month: int):
 
 app_v2.render_calendar_reader = _calendar_reader
 install_ui_overrides(app_v2)
+install_preferences_privacy_overrides(app_v2)
 install_preferences_output_overrides(app_v2)
 install_tool3_minimal_overrides(app_v2)
 install_calendar_time_overrides(app_v2)
