@@ -22,6 +22,7 @@ except Exception:
 
 LOCAL_STORAGE_KEY = "medstaff_oncology_preferences_calendar_events_v1"
 LOADED_CALENDARS_KEY = "medstaff_oncology_loaded_calendar_labels_v1"
+FLASH_MESSAGE_KEY = "preferences_calendar_flash_message_v1"
 
 
 def _load_json(key: str, default):
@@ -97,6 +98,10 @@ def _event_count(events_by_date: dict[str, list[str]]) -> int:
 def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, list[str]]:
     st.subheader("אירועים מהיומנים האישיים")
     st.caption("טוענים יומן אחד, ואם צריך מוסיפים יומן שני. האירועים מצטברים ואינם מסמנים חסימה אוטומטית.")
+
+    flash_message = st.session_state.pop(FLASH_MESSAGE_KEY, None)
+    if flash_message:
+        st.success(flash_message)
 
     if "preferences_calendar_events" not in st.session_state:
         st.session_state["preferences_calendar_events"] = _load_local_events()
@@ -186,11 +191,15 @@ def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, lis
                         st.session_state["preferences_loaded_calendar_labels"] = loaded_labels
                     _save_json(LOCAL_STORAGE_KEY, merged)
                     _save_json(LOADED_CALENDARS_KEY, loaded_labels)
-                    events_by_date = merged
                     if len(loaded_labels) == 1:
-                        st.success(f"נטענו {loaded_count} אירועים. ניתן עכשיו לבחור יומן נוסף ולטעון גם אותו.")
+                        st.session_state[FLASH_MESSAGE_KEY] = (
+                            f"נטענו {loaded_count} אירועים. ניתן עכשיו לבחור יומן נוסף ולטעון גם אותו."
+                        )
                     else:
-                        st.success(f"נוספו {loaded_count} אירועים. האירועים משני היומנים מוצגים יחד.")
+                        st.session_state[FLASH_MESSAGE_KEY] = (
+                            f"נוספו {loaded_count} אירועים. האירועים משני היומנים מוצגים יחד."
+                        )
+                    st.rerun()
             except Exception as exc:
                 st.error(f"טעינת אירועי היומן נכשלה: {exc}")
 
@@ -200,8 +209,8 @@ def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, lis
             st.session_state["preferences_loaded_calendar_labels"] = []
             _remove_local(LOCAL_STORAGE_KEY)
             _remove_local(LOADED_CALENDARS_KEY)
-            events_by_date = {}
-            st.success("אירועי היומנים נוקו מהמכשיר הזה.")
+            st.session_state[FLASH_MESSAGE_KEY] = "אירועי היומנים נוקו מהמכשיר הזה."
+            st.rerun()
 
     with col_disconnect:
         if st.button("נתק Google", width="stretch", key="disconnect_preferences_calendar_v3"):
