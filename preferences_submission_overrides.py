@@ -1,7 +1,12 @@
 """Add central Google Sheets submission action to Tool 1."""
 from __future__ import annotations
 
+import re
+
 from google_sheets_submissions import configured, submit_preferences
+
+
+_MONTH_FROM_FILENAME = re.compile(r"_(\d{4})_(\d{2})\.xlsx$")
 
 
 def install(app_module) -> None:
@@ -18,8 +23,6 @@ def install(app_module) -> None:
 
         captured = {
             "employee": "",
-            "year": None,
-            "month": None,
             "edited": None,
             "submit_rendered": False,
         }
@@ -32,43 +35,45 @@ def install(app_module) -> None:
 
         def capture_data_editor(data, *args, **kwargs):
             edited = original_data_editor(data, *args, **kwargs)
-            key = str(kwargs.get("key", ""))
-            if key.startswith("preferences_table_"):
-                try:
-                    parts = key.rsplit("_", 2)
-                    captured["year"] = int(parts[-2])
-                    captured["month"] = int(parts[-1])
+            try:
+                required = {"תאריך", "חסימה", "חופש", "הערה"}
+                if required.issubset(set(edited.columns)):
                     captured["edited"] = edited
-                except Exception:
-                    pass
+            except Exception:
+                pass
             return edited
 
         def submit_then_download(label, *args, **kwargs):
             file_name = str(kwargs.get("file_name", "") or "")
             if file_name.startswith("העדפות_") and not captured["submit_rendered"]:
                 captured["submit_rendered"] = True
+
+                match = _MONTH_FROM_FILENAME.search(file_name)
+                year = int(match.group(1)) if match else None
+                month = int(match.group(2)) if match else None
                 employee = str(captured.get("employee") or "").strip()
                 edited = captured.get("edited")
-                year = captured.get("year")
-                month = captured.get("month")
 
-                disabled = not employee or edited is None or year is None or month is None or not configured(st)
-                if st.button(
-                    "הגש העדפות",
-                    type="primary",
-                    width="stretch",
-                    key=f"submit_preferences_{year}_{month}",
-                    disabled=disabled,
-                ):
-                    try:
-                        values = submit_preferences(st, employee, int(year), int(month), edited)
-                        st.success(
-                            f"ההעדפות של {values[1]} לחודש {values[2]} נקלטו בהצלחה."
-                        )
-                    except Exception as exc:
-                        st.error(f"הגשת ההעדפות נכשלה: {exc}")
+                ready = bool(employee and edited is not None and year is not None and month is not None)
+                sheets_ready = configured(st)
 
-                if not configured(st):
+                if ready:
+                    if st.button(
+                        "הגש העדפות",
+                        type="primary",
+                        width="stretch",
+                        key=f"submit_preferences_{year}_{month}_{employee}",
+                        disabled=not sheets_ready,
+                    ):
+                        try:
+                            values = submit_preferences(st, employee, year, month, edited)
+                            st.success(
+                                f"ההעדפות של {values[1]} לחודש {values[2]} נקלטו בהצלחה."
+                            )
+                        except Exception as exc:
+                            st.error(f"הגשת ההעדפות נכשלה: {exc}")
+
+                if ready and not sheets_ready:
                     st.caption("הגשה למאגר תופעל לאחר השלמת חיבור Google Sheets של המערכת.")
 
             return original_download_button(label, *args, **kwargs)
