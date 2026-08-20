@@ -16,9 +16,6 @@ def install(app_module) -> None:
     for code in CALENDAR_EXCLUDED_CODES:
         app_module.CALENDAR_TASK_CODES.discard(code)
 
-    # ת"ש is a meaningful entitled rest day and should be available as a
-    # selectable all-day calendar event. It is intentionally separate from
-    # generic post-duty absence, which remains hidden.
     app_module.CALENDAR_TASK_CODES.add("rest_entitlement")
     aliases = app_module.CONFIG.setdefault("activity_aliases", [])
     if not any(item.get("code") == "rest_entitlement" for item in aliases):
@@ -76,6 +73,15 @@ def install(app_module) -> None:
         [data-testid="stMultiSelect"] * {
             direction: rtl !important;
             text-align: right !important;
+        }
+
+        /* Time values must stay LTR, otherwise 08:00 is visually reversed to 00:08. */
+        input[type="time"],
+        [data-testid="stTimeInput"] input,
+        [data-testid="stTimeInput"] input[type="time"] {
+            direction: ltr !important;
+            text-align: left !important;
+            unicode-bidi: isolate !important;
         }
 
         section[data-testid="stSidebar"],
