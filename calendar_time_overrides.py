@@ -42,11 +42,11 @@ def _time_card(
 
 
 def install(app_module) -> None:
-    """Wrap tool 3 with editable duty times before calendar export."""
-    original = app_module.tool_calendar
-    if getattr(original, "_manual_time_override", False):
+    """Wrap tool 3 once per app module, even across Streamlit reruns."""
+    if getattr(app_module, "_calendar_time_override_installed", False):
         return
 
+    original = app_module.tool_calendar
     original_render_header = app_module.render_header
 
     def tool_calendar_with_times() -> None:
@@ -108,48 +108,35 @@ def install(app_module) -> None:
 
         for code in ("ward_duty_regular", "ward_duty_friday"):
             settings = defaults.setdefault(code, {})
-            settings.update(
-                {
-                    "all_day": False,
-                    "start": department_start,
-                    "end": department_end,
-                    "end_day_offset": 1,
-                    "create": True,
-                }
-            )
-
-        saturday_settings = defaults.setdefault("ward_duty_saturday", {})
-        saturday_settings.update(
-            {
+            settings.update({
                 "all_day": False,
-                "start": saturday_start,
-                "end": saturday_end,
+                "start": department_start,
+                "end": department_end,
                 "end_day_offset": 1,
                 "create": True,
-            }
-        )
+            })
 
-        er_settings = defaults.setdefault("er_duty", {})
-        er_settings.update(
-            {
-                "all_day": False,
-                "start": er_start,
-                "end": er_end,
-                "end_day_offset": 0,
-                "create": True,
-            }
-        )
-
-        day_hospital_settings = defaults.setdefault("day_hospital_duty", {})
-        day_hospital_settings.update(
-            {
-                "all_day": False,
-                "start": day_hospital_start,
-                "end": day_hospital_end,
-                "end_day_offset": 0,
-                "create": True,
-            }
-        )
+        defaults.setdefault("ward_duty_saturday", {}).update({
+            "all_day": False,
+            "start": saturday_start,
+            "end": saturday_end,
+            "end_day_offset": 1,
+            "create": True,
+        })
+        defaults.setdefault("er_duty", {}).update({
+            "all_day": False,
+            "start": er_start,
+            "end": er_end,
+            "end_day_offset": 0,
+            "create": True,
+        })
+        defaults.setdefault("day_hospital_duty", {}).update({
+            "all_day": False,
+            "start": day_hospital_start,
+            "end": day_hospital_end,
+            "end_day_offset": 0,
+            "create": True,
+        })
 
         st.divider()
 
@@ -161,3 +148,4 @@ def install(app_module) -> None:
 
     tool_calendar_with_times._manual_time_override = True  # type: ignore[attr-defined]
     app_module.tool_calendar = tool_calendar_with_times
+    app_module._calendar_time_override_installed = True
