@@ -18,6 +18,6 @@ def _calendar_reader(year: int, month: int):
 
 app_v2.render_calendar_reader = _calendar_reader
 install_ui_overrides(app_v2)
-install_name_detection_overrides(app_v2)
 install_calendar_time_overrides(app_v2)
+install_name_detection_overrides(app_v2)
 app_v2.main()
