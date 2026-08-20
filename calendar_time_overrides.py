@@ -1,19 +1,43 @@
 """Manual duty-time controls for calendar export in tool 3."""
 from __future__ import annotations
 
-from datetime import time
-
 import streamlit as st
 
 
-def _time_card(title: str, start_label: str, end_label: str, start_value: time, end_value: time, start_key: str, end_key: str):
+TIME_OPTIONS = [f"{hour:02d}:{minute:02d}" for hour in range(24) for minute in (0, 15, 30, 45)]
+
+
+def _time_selector(label: str, default: str, key: str) -> str:
+    """Render a stable HH:MM selector that is not affected by browser RTL time controls."""
+    try:
+        index = TIME_OPTIONS.index(default)
+    except ValueError:
+        index = 0
+    return st.selectbox(
+        label,
+        TIME_OPTIONS,
+        index=index,
+        key=key,
+        format_func=lambda value: f"\u200e{value}\u200e",
+    )
+
+
+def _time_card(
+    title: str,
+    start_label: str,
+    end_label: str,
+    start_value: str,
+    end_value: str,
+    start_key: str,
+    end_key: str,
+):
     with st.container(border=True):
         st.markdown(f"### {title}")
         start_col, end_col = st.columns(2)
         with start_col:
-            start_time = st.time_input(start_label, value=start_value, key=start_key)
+            start_time = _time_selector(start_label, start_value, start_key)
         with end_col:
-            end_time = st.time_input(end_label, value=end_value, key=end_key)
+            end_time = _time_selector(end_label, end_value, end_key)
     return start_time, end_time
 
 
@@ -42,20 +66,20 @@ def install(app_module) -> None:
                 "תורנות מחלקה - א'-ו'",
                 "התחלה",
                 "סיום ביום למחרת",
-                time(8, 0),
-                time(10, 0),
-                "calendar_department_start",
-                "calendar_department_end",
+                "08:00",
+                "10:00",
+                "calendar_department_start_v2",
+                "calendar_department_end_v2",
             )
         with row1_left:
             saturday_start, saturday_end = _time_card(
                 "תורנות מחלקה - שבת",
                 "התחלה בשבת",
                 "סיום ביום ראשון",
-                time(9, 0),
-                time(10, 0),
-                "calendar_saturday_start",
-                "calendar_saturday_end",
+                "09:00",
+                "10:00",
+                "calendar_saturday_start_v2",
+                "calendar_saturday_end_v2",
             )
 
         row2_left, row2_right = st.columns(2, gap="medium")
@@ -64,20 +88,20 @@ def install(app_module) -> None:
                 "תורנות מיון",
                 "התחלה",
                 "סיום",
-                time(16, 0),
-                time(21, 0),
-                "calendar_er_start",
-                "calendar_er_end",
+                "16:00",
+                "21:00",
+                "calendar_er_start_v2",
+                "calendar_er_end_v2",
             )
         with row2_left:
             day_hospital_start, day_hospital_end = _time_card(
                 "תורנות אשפוז יום",
                 "התחלה",
                 "סיום",
-                time(16, 0),
-                time(21, 0),
-                "calendar_day_hospital_start",
-                "calendar_day_hospital_end",
+                "16:00",
+                "21:00",
+                "calendar_day_hospital_start_v2",
+                "calendar_day_hospital_end_v2",
             )
 
         defaults = app_module.CONFIG.setdefault("event_defaults", {})
@@ -87,8 +111,8 @@ def install(app_module) -> None:
             settings.update(
                 {
                     "all_day": False,
-                    "start": department_start.strftime("%H:%M"),
-                    "end": department_end.strftime("%H:%M"),
+                    "start": department_start,
+                    "end": department_end,
                     "end_day_offset": 1,
                     "create": True,
                 }
@@ -98,8 +122,8 @@ def install(app_module) -> None:
         saturday_settings.update(
             {
                 "all_day": False,
-                "start": saturday_start.strftime("%H:%M"),
-                "end": saturday_end.strftime("%H:%M"),
+                "start": saturday_start,
+                "end": saturday_end,
                 "end_day_offset": 1,
                 "create": True,
             }
@@ -109,8 +133,8 @@ def install(app_module) -> None:
         er_settings.update(
             {
                 "all_day": False,
-                "start": er_start.strftime("%H:%M"),
-                "end": er_end.strftime("%H:%M"),
+                "start": er_start,
+                "end": er_end,
                 "end_day_offset": 0,
                 "create": True,
             }
@@ -120,8 +144,8 @@ def install(app_module) -> None:
         day_hospital_settings.update(
             {
                 "all_day": False,
-                "start": day_hospital_start.strftime("%H:%M"),
-                "end": day_hospital_end.strftime("%H:%M"),
+                "start": day_hospital_start,
+                "end": day_hospital_end,
                 "end_day_offset": 0,
                 "create": True,
             }
