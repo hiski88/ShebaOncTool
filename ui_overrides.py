@@ -76,6 +76,29 @@ def install(app_module) -> None:
             text-align: right !important;
         }
 
+        /* BaseWeb renders opened select menus in a portal outside the widget.
+           Force the popup list itself to RTL/right alignment as well. */
+        [role="listbox"],
+        [role="listbox"] *,
+        [role="option"],
+        [role="option"] *,
+        div[data-baseweb="popover"],
+        div[data-baseweb="popover"] * {
+            direction: rtl !important;
+            text-align: right !important;
+        }
+
+        [role="option"] {
+            justify-content: flex-start !important;
+        }
+
+        [role="option"] > div,
+        [role="option"] span,
+        [role="listbox"] li {
+            width: 100% !important;
+            text-align: right !important;
+        }
+
         /* Keep the time widget itself RTL/right-aligned. Only the numeric clock
            value is LTR so 08:00 is not visually reversed. */
         [data-testid="stTimeInput"],
