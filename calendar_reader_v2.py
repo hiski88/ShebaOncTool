@@ -78,6 +78,13 @@ def _remove_local(key: str) -> None:
         pass
 
 
+def _clear_loaded_events() -> None:
+    st.session_state["preferences_calendar_events"] = {}
+    st.session_state["preferences_loaded_calendar_labels"] = []
+    _remove_local(LOCAL_STORAGE_KEY)
+    _remove_local(LOADED_CALENDARS_KEY)
+
+
 def _load_local_events() -> dict[str, list[str]]:
     payload = _load_json(LOCAL_STORAGE_KEY, {})
     if not isinstance(payload, dict):
@@ -130,7 +137,16 @@ def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, lis
 
     credentials = get_credentials(st)
     if credentials is None:
-        st.link_button("התחברות ל-Google Calendar", authorization_url(st), width="stretch")
+        if events_by_date or loaded_labels:
+            col_connect, col_clear = st.columns([2, 1])
+            with col_connect:
+                st.link_button("התחברות ל-Google Calendar", authorization_url(st), width="stretch")
+            with col_clear:
+                if st.button("נקה אירועים", width="stretch", key="clear_preferences_calendars_disconnected_v1"):
+                    _clear_loaded_events()
+                    st.rerun()
+        else:
+            st.link_button("התחברות ל-Google Calendar", authorization_url(st), width="stretch")
         return events_by_date
 
     try:
@@ -192,14 +208,11 @@ def render_calendar_reader(year: int, month: int, config: dict) -> dict[str, lis
 
     with col_clear:
         if st.button("נקה אירועים", width="stretch", key="clear_preferences_calendars_v3"):
-            st.session_state["preferences_calendar_events"] = {}
-            st.session_state["preferences_loaded_calendar_labels"] = []
-            _remove_local(LOCAL_STORAGE_KEY)
-            _remove_local(LOADED_CALENDARS_KEY)
+            _clear_loaded_events()
             st.rerun()
 
     with col_disconnect:
-        if st.button("נתק Google", width="stretch", key="disconnect_preferences_calendar_v3"):
+        if st.button("נתק יומן", width="stretch", key="disconnect_preferences_calendar_v3"):
             _save_json(LOCAL_STORAGE_KEY, events_by_date)
             _save_json(LOADED_CALENDARS_KEY, loaded_labels)
             disconnect(st)
