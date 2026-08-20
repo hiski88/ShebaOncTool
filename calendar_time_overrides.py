@@ -6,6 +6,17 @@ from datetime import time
 import streamlit as st
 
 
+def _time_card(title: str, start_label: str, end_label: str, start_value: time, end_value: time, start_key: str, end_key: str):
+    with st.container(border=True):
+        st.markdown(f"### {title}")
+        start_col, end_col = st.columns(2)
+        with start_col:
+            start_time = st.time_input(start_label, value=start_value, key=start_key)
+        with end_col:
+            end_time = st.time_input(end_label, value=end_value, key=end_key)
+    return start_time, end_time
+
+
 def install(app_module) -> None:
     """Wrap tool 3 with editable duty times before calendar export."""
     original = app_module.tool_calendar
@@ -25,58 +36,48 @@ def install(app_module) -> None:
             "השעות משמשות בעיקר להצגה מסודרת ביומן. אלו ערכי ברירת מחדל בלבד וניתן לשנות אותם לפני יצירת ICS או כתיבה ליומן Google."
         )
 
-        col_department, col_saturday, col_er, col_day_hospital = st.columns(4)
-
-        with col_department:
-            st.markdown("**תורנות מחלקה - א'-ו'**")
-            department_start = st.time_input(
+        row1_left, row1_right = st.columns(2, gap="medium")
+        with row1_right:
+            department_start, department_end = _time_card(
+                "תורנות מחלקה - א'-ו'",
                 "התחלה",
-                value=time(8, 0),
-                key="calendar_department_start",
-            )
-            department_end = st.time_input(
                 "סיום ביום למחרת",
-                value=time(10, 0),
-                key="calendar_department_end",
+                time(8, 0),
+                time(10, 0),
+                "calendar_department_start",
+                "calendar_department_end",
             )
-
-        with col_saturday:
-            st.markdown("**תורנות מחלקה - שבת**")
-            saturday_start = st.time_input(
+        with row1_left:
+            saturday_start, saturday_end = _time_card(
+                "תורנות מחלקה - שבת",
                 "התחלה בשבת",
-                value=time(9, 0),
-                key="calendar_saturday_start",
-            )
-            saturday_end = st.time_input(
                 "סיום ביום ראשון",
-                value=time(10, 0),
-                key="calendar_saturday_end",
+                time(9, 0),
+                time(10, 0),
+                "calendar_saturday_start",
+                "calendar_saturday_end",
             )
 
-        with col_er:
-            st.markdown("**תורנות מיון**")
-            er_start = st.time_input(
+        row2_left, row2_right = st.columns(2, gap="medium")
+        with row2_right:
+            er_start, er_end = _time_card(
+                "תורנות מיון",
                 "התחלה",
-                value=time(16, 0),
-                key="calendar_er_start",
-            )
-            er_end = st.time_input(
                 "סיום",
-                value=time(21, 0),
-                key="calendar_er_end",
+                time(16, 0),
+                time(21, 0),
+                "calendar_er_start",
+                "calendar_er_end",
             )
-
-        with col_day_hospital:
-            st.markdown("**תורנות אשפוז יום**")
-            day_hospital_start = st.time_input(
+        with row2_left:
+            day_hospital_start, day_hospital_end = _time_card(
+                "תורנות אשפוז יום",
                 "התחלה",
-                value=time(16, 0),
-                key="calendar_day_hospital_start",
-            )
-            day_hospital_end = st.time_input(
                 "סיום",
-                value=time(21, 0),
-                key="calendar_day_hospital_end",
+                time(16, 0),
+                time(21, 0),
+                "calendar_day_hospital_start",
+                "calendar_day_hospital_end",
             )
 
         defaults = app_module.CONFIG.setdefault("event_defaults", {})
@@ -128,8 +129,6 @@ def install(app_module) -> None:
 
         st.divider()
 
-        # The wrapped tool already renders its own header. Suppress only that
-        # duplicate header while preserving the rest of its flow unchanged.
         app_module.render_header = lambda *_args, **_kwargs: None
         try:
             original()
