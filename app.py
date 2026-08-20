@@ -11,6 +11,7 @@ from calendar_time_overrides import install as install_calendar_time_overrides
 from google_calendar import handle_oauth_callback
 from preferences_output_overrides import install as install_preferences_output_overrides
 from preferences_privacy_overrides import install as install_preferences_privacy_overrides
+from tool2_submissions_overrides import install as install_tool2_submissions_overrides
 from tool3_minimal_overrides import install as install_tool3_minimal_overrides
 from ui_overrides import install as install_ui_overrides
 
@@ -37,6 +38,7 @@ install_ui_overrides(app_v2)
 # state restoration and clearing behavior intact.
 install_preferences_output_overrides(app_v2)
 install_preferences_privacy_overrides(app_v2)
+install_tool2_submissions_overrides(app_v2)
 install_tool3_minimal_overrides(app_v2)
 install_calendar_time_overrides(app_v2)
 app_v2.main()
