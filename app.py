@@ -11,7 +11,6 @@ from calendar_time_overrides import install as install_calendar_time_overrides
 from google_calendar import handle_oauth_callback
 from preferences_output_overrides import install as install_preferences_output_overrides
 from preferences_privacy_overrides import install as install_preferences_privacy_overrides
-from preferences_submission_overrides import install as install_preferences_submission_overrides
 from tool3_minimal_overrides import install as install_tool3_minimal_overrides
 from ui_overrides import install as install_ui_overrides
 
@@ -34,9 +33,7 @@ def _calendar_reader(year: int, month: int):
 app_v2.render_calendar_reader = _calendar_reader
 install_ui_overrides(app_v2)
 install_preferences_privacy_overrides(app_v2)
-# Submission is installed before the output override so the visible order is:
-# submit -> copy -> Excel download.
-install_preferences_submission_overrides(app_v2)
+# Unified Tool 1 actions: submit -> copy -> Excel download.
 install_preferences_output_overrides(app_v2)
 install_tool3_minimal_overrides(app_v2)
 install_calendar_time_overrides(app_v2)
