@@ -32,9 +32,11 @@ def _calendar_reader(year: int, month: int):
 
 app_v2.render_calendar_reader = _calendar_reader
 install_ui_overrides(app_v2)
-install_preferences_privacy_overrides(app_v2)
-# Unified Tool 1 actions: submit -> copy -> Excel download.
+# Tool 1 final actions are installed first, then private persistence wraps them.
+# This lets the action layer receive the final edited table while keeping local
+# state restoration and clearing behavior intact.
 install_preferences_output_overrides(app_v2)
+install_preferences_privacy_overrides(app_v2)
 install_tool3_minimal_overrides(app_v2)
 install_calendar_time_overrides(app_v2)
 app_v2.main()
