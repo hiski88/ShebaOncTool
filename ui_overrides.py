@@ -75,13 +75,30 @@ def install(app_module) -> None:
             text-align: right !important;
         }
 
-        /* Time values must stay LTR, otherwise 08:00 is visually reversed to 00:08. */
+        /* Clock values are numeric LTR content inside an RTL application. */
         input[type="time"],
+        [data-testid="stTimeInput"],
+        [data-testid="stTimeInput"] *,
         [data-testid="stTimeInput"] input,
         [data-testid="stTimeInput"] input[type="time"] {
             direction: ltr !important;
             text-align: left !important;
             unicode-bidi: isolate !important;
+        }
+
+        /* Chrome / Chromium keeps the hour and minute fields as internal
+           datetime-edit controls. They must also be forced to LTR or 08:00
+           is visually rendered as 00:08 in an RTL document. */
+        input[type="time"]::-webkit-datetime-edit,
+        input[type="time"]::-webkit-datetime-edit-fields-wrapper,
+        input[type="time"]::-webkit-datetime-edit-hour-field,
+        input[type="time"]::-webkit-datetime-edit-minute-field,
+        input[type="time"]::-webkit-datetime-edit-second-field,
+        input[type="time"]::-webkit-datetime-edit-ampm-field,
+        input[type="time"]::-webkit-datetime-edit-text {
+            direction: ltr !important;
+            unicode-bidi: isolate !important;
+            text-align: left !important;
         }
 
         section[data-testid="stSidebar"],
