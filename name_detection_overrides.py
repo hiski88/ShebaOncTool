@@ -1,16 +1,17 @@
 """Tool 3 name-detection UX overrides.
 
-The final schedule flow must rely on automatic name detection. End users should
-not have to understand or repair the parser by typing missing names manually.
+The final schedule flow relies on automatic name detection. End users should not
+have to repair the parser by typing missing names manually.
 """
 from __future__ import annotations
 
 
 def install(app_module) -> None:
-    """Remove manual name correction from tool 3 and fail clearly on detection errors."""
-    original = app_module.tool_calendar
-    if getattr(original, "_automatic_names_only", False):
+    """Remove manual name correction once per app module and fail clearly on errors."""
+    if getattr(app_module, "_name_detection_override_installed", False):
         return
+
+    original = app_module.tool_calendar
 
     def tool_calendar_automatic_names_only() -> None:
         original_text_area = app_module.st.text_area
@@ -40,3 +41,4 @@ def install(app_module) -> None:
 
     tool_calendar_automatic_names_only._automatic_names_only = True  # type: ignore[attr-defined]
     app_module.tool_calendar = tool_calendar_automatic_names_only
+    app_module._name_detection_override_installed = True
