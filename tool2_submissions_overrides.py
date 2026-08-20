@@ -53,16 +53,16 @@ def install(app_module) -> None:
             name = item["שם עובד"]
             seen[name] += 1
             count = counts[name]
+            is_newest_for_name = seen[name] == 1
             duplicate_status = ""
             if count > 1:
                 duplicate_status = f"{seen[name]} מתוך {count}"
-                if seen[name] == 1:
+                if is_newest_for_name:
                     duplicate_status += " - החדשה ביותר"
 
-            # Streamlit's dataframe grid lays physical columns left-to-right even
-            # inside the RTL app. Store them in reverse physical order so the
-            # visual reading order from the right is: submission time, employee,
-            # blocks, vacations, notes, duplicate status.
+            # Streamlit's grid lays physical columns left-to-right even inside
+            # the RTL app. Store them in reverse physical order so the visual
+            # reading order from the right starts with the manual include flag.
             display_rows.append(
                 {
                     "כפילות": duplicate_status,
@@ -71,12 +71,27 @@ def install(app_module) -> None:
                     "חסימות": item["חסימות"],
                     "שם עובד": name,
                     "זמן הגשה": item["זמן הגשה"],
+                    "לכלול בתכנון": is_newest_for_name,
                 }
             )
 
-        st.subheader("הגשות לחודש")
-        st.dataframe(pd.DataFrame(display_rows), width="stretch", hide_index=True)
-        st.caption("ההגשות מוצגות לפי סדר הקליטה, מהחדשה ביותר לישנה ביותר.")
+        st.subheader("בחירת הגשות לתכנון")
+        selected_table = st.data_editor(
+            pd.DataFrame(display_rows),
+            width="stretch",
+            hide_index=True,
+            disabled=["זמן הגשה", "שם עובד", "חסימות", "חופשים", "הערות", "כפילות"],
+            column_config={
+                "לכלול בתכנון": st.column_config.CheckboxColumn("לכלול בתכנון"),
+            },
+            key=f"manager_submission_selection_{year}_{month}",
+        )
+
+        selected_count = int(selected_table["לכלול בתכנון"].fillna(False).astype(bool).sum())
+        st.caption(
+            f"נבחרו {selected_count} מתוך {len(submissions)} הגשות. "
+            "בכפילות עם שם זהה מסומנת אוטומטית רק ההגשה החדשה ביותר, וניתן לשנות ידנית."
+        )
 
     app_module.tool_manager = tool_manager_from_sheets
     app_module._tool2_submissions_override_installed = True
