@@ -130,7 +130,6 @@ def submit_preferences(st, employee: str, year: int, month: int, edited) -> list
             body={"values": [values]},
         ).execute()
     except Exception:
-        # Avoid leaving a blank row if writing the values fails after insertion.
         try:
             service.spreadsheets().batchUpdate(
                 spreadsheetId=spreadsheet_id,
@@ -164,3 +163,35 @@ def submit_preferences(st, employee: str, year: int, month: int, edited) -> list
         raise RuntimeError("ההגשה נשלחה, אך לא ניתן היה לאמת שהמידע נקלט במלואו.")
 
     return values
+
+
+def read_submissions(st, year: int, month: int) -> list[dict[str, str]]:
+    """Read Submissions rows for one month, preserving newest-first sheet order."""
+    service, spreadsheet_id, sheet_name = _service(st)
+    range_name = f"'{sheet_name}'!A2:F"
+    response = service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=range_name,
+        valueRenderOption="FORMATTED_VALUE",
+    ).execute()
+
+    month_value = f"{year:04d}-{month:02d}"
+    rows: list[dict[str, str]] = []
+    for raw in response.get("values", []):
+        values = [str(item) for item in raw] + [""] * (6 - len(raw))
+        submitted_at, employee, submitted_month, blocked, vacations, notes = values[:6]
+        if submitted_month.strip() != month_value:
+            continue
+        if not employee.strip():
+            continue
+        rows.append(
+            {
+                "זמן הגשה": submitted_at.strip(),
+                "שם עובד": employee.strip(),
+                "חודש": submitted_month.strip(),
+                "חסימות": blocked.strip(),
+                "חופשים": vacations.strip(),
+                "הערות": notes.strip(),
+            }
+        )
+    return rows
