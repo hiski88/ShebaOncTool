@@ -195,3 +195,206 @@ def read_submissions(st, year: int, month: int) -> list[dict[str, str]]:
             }
         )
     return rows
+
+
+def _day_set(value: str) -> set[int]:
+    result: set[int] = set()
+    for part in str(value or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            result.add(int(part))
+        except ValueError:
+            continue
+    return result
+
+
+def _notes_by_day(value: str) -> dict[int, list[str]]:
+    result: dict[int, list[str]] = {}
+    for part in str(value or "").split("|"):
+        part = part.strip()
+        if not part or " - " not in part:
+            continue
+        date_part, text = part.split(" - ", 1)
+        try:
+            day = int(date_part.split(".", 1)[0])
+        except (TypeError, ValueError):
+            continue
+        text = text.strip()
+        if text:
+            result.setdefault(day, []).append(text)
+    return result
+
+
+def create_planning_sheet(st, year: int, month: int, month_rows, selected_submissions: list[dict[str, str]]) -> str:
+    """Create one RTL monthly planning tab with yellow X cells for blocked/vacation days."""
+    if not selected_submissions:
+        raise RuntimeError("לא נבחרו הגשות לתכנון.")
+
+    service, spreadsheet_id, _ = _service(st)
+    title = f"תכנון {month:02d}-{year:04d}"
+    metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    existing_titles = {
+        item.get("properties", {}).get("title", "") for item in metadata.get("sheets", [])
+    }
+    if title in existing_titles:
+        raise RuntimeError(f"כבר קיימת כרטיסייה בשם '{title}'.")
+
+    employees = [str(item.get("שם עובד", "")).strip() for item in selected_submissions]
+    employees = [name for name in employees if name]
+    if not employees:
+        raise RuntimeError("לא נמצאו שמות עובדים בהגשות שנבחרו.")
+
+    add_result = service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={
+            "requests": [
+                {
+                    "addSheet": {
+                        "properties": {
+                            "title": title,
+                            "rightToLeft": True,
+                            "gridProperties": {
+                                "rowCount": max(40, len(month_rows) + 5),
+                                "columnCount": max(12, len(employees) + 5),
+                                "frozenRowCount": 1,
+                                "frozenColumnCount": 3,
+                            },
+                        }
+                    }
+                }
+            ]
+        },
+    ).execute()
+    sheet_props = add_result["replies"][0]["addSheet"]["properties"]
+    sheet_id = int(sheet_props["sheetId"])
+
+    employee_data = []
+    for item in selected_submissions:
+        employee_data.append(
+            {
+                "name": str(item.get("שם עובד", "")).strip(),
+                "blocked": _day_set(item.get("חסימות", "")),
+                "vacations": _day_set(item.get("חופשים", "")),
+                "notes": _notes_by_day(item.get("הערות", "")),
+            }
+        )
+
+    headers = ["תאריך", "יום", "חג / יום מיוחד", *employees]
+    values = [headers]
+    cell_notes: list[dict] = []
+    x_cells: list[dict] = []
+
+    for row_index, row in enumerate(month_rows, start=1):
+        date_value = row.get("תאריך")
+        try:
+            day = int(date_value.day)
+            date_text = date_value.strftime("%d.%m.%Y")
+        except Exception:
+            day = int(row_index)
+            date_text = str(date_value or "")
+
+        output_row = [
+            date_text,
+            str(row.get("יום", "") or ""),
+            str(row.get("חג / יום מיוחד", "") or ""),
+        ]
+        for employee_col, employee in enumerate(employee_data, start=3):
+            blocked = day in employee["blocked"]
+            vacation = day in employee["vacations"]
+            notes = employee["notes"].get(day, [])
+            output_row.append("X" if blocked or vacation else "")
+
+            note_parts: list[str] = []
+            if blocked:
+                note_parts.append("חסימה")
+            if vacation:
+                note_parts.append("חופש")
+            note_parts.extend(f"הערה: {text}" for text in notes)
+            if note_parts:
+                cell_notes.append(
+                    {
+                        "updateCells": {
+                            "range": {
+                                "sheetId": sheet_id,
+                                "startRowIndex": row_index,
+                                "endRowIndex": row_index + 1,
+                                "startColumnIndex": employee_col,
+                                "endColumnIndex": employee_col + 1,
+                            },
+                            "rows": [{"values": [{"note": "\n".join(note_parts)}]}],
+                            "fields": "note",
+                        }
+                    }
+                )
+            if blocked or vacation:
+                x_cells.append(
+                    {
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": sheet_id,
+                                "startRowIndex": row_index,
+                                "endRowIndex": row_index + 1,
+                                "startColumnIndex": employee_col,
+                                "endColumnIndex": employee_col + 1,
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "backgroundColor": {"red": 1.0, "green": 0.95, "blue": 0.55},
+                                    "horizontalAlignment": "CENTER",
+                                    "textFormat": {"bold": True},
+                                }
+                            },
+                            "fields": "userEnteredFormat(backgroundColor,horizontalAlignment,textFormat.bold)",
+                        }
+                    }
+                )
+        values.append(output_row)
+
+    service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id,
+        range=f"'{title}'!A1",
+        valueInputOption="RAW",
+        body={"values": values},
+    ).execute()
+
+    format_requests = [
+        {
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 0,
+                    "endRowIndex": 1,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": len(headers),
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "backgroundColor": {"red": 0.9, "green": 0.93, "blue": 0.97},
+                        "horizontalAlignment": "CENTER",
+                        "textFormat": {"bold": True},
+                    }
+                },
+                "fields": "userEnteredFormat(backgroundColor,horizontalAlignment,textFormat.bold)",
+            }
+        },
+        {
+            "autoResizeDimensions": {
+                "dimensions": {
+                    "sheetId": sheet_id,
+                    "dimension": "COLUMNS",
+                    "startIndex": 0,
+                    "endIndex": len(headers),
+                }
+            }
+        },
+        *x_cells,
+        *cell_notes,
+    ]
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={"requests": format_requests},
+    ).execute()
+
+    return title
