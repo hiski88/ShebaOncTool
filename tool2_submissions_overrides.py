@@ -5,7 +5,7 @@ from collections import Counter
 
 import pandas as pd
 
-from google_sheets_submissions import configured, read_submissions
+from google_sheets_submissions import configured, create_planning_sheet, read_submissions
 
 
 def install(app_module) -> None:
@@ -87,11 +87,52 @@ def install(app_module) -> None:
             key=f"manager_submission_selection_{year}_{month}",
         )
 
-        selected_count = int(selected_table["לכלול בתכנון"].fillna(False).astype(bool).sum())
+        selected_mask = selected_table["לכלול בתכנון"].fillna(False).astype(bool)
+        selected_rows = selected_table[selected_mask].copy()
+        selected_count = len(selected_rows)
         st.caption(
             f"נבחרו {selected_count} מתוך {len(submissions)} הגשות. "
             "בכפילות עם שם זהה מסומנת אוטומטית רק ההגשה החדשה ביותר, וניתן לשנות ידנית."
         )
+
+        selected_names = [str(name).strip() for name in selected_rows["שם עובד"].tolist()]
+        selected_name_counts = Counter(selected_names)
+        duplicate_selected = [name for name, count in selected_name_counts.items() if name and count > 1]
+        if duplicate_selected:
+            st.warning(
+                "לפני יצירת כרטיסיית התכנון יש להשאיר הגשה אחת בלבד לכל שם זהה: "
+                + ", ".join(duplicate_selected)
+            )
+
+        can_create = selected_count > 0 and not duplicate_selected
+        if st.button(
+            "צור כרטיסיית תכנון",
+            type="primary",
+            width="stretch",
+            disabled=not can_create,
+            key=f"create_planning_sheet_{year}_{month}",
+        ):
+            selected_submissions = [
+                {
+                    "שם עובד": str(row.get("שם עובד", "") or "").strip(),
+                    "חסימות": str(row.get("חסימות", "") or "").strip(),
+                    "חופשים": str(row.get("חופשים", "") or "").strip(),
+                    "הערות": str(row.get("הערות", "") or "").strip(),
+                }
+                for _, row in selected_rows.iterrows()
+            ]
+            try:
+                month_table = app_module.build_month_table(year, month)
+                title = create_planning_sheet(
+                    st,
+                    year,
+                    month,
+                    month_table.to_dict("records"),
+                    selected_submissions,
+                )
+                st.success(f"הכרטיסייה '{title}' נוצרה בהצלחה ב-Google Sheet.")
+            except Exception as exc:
+                st.error(f"לא ניתן ליצור את כרטיסיית התכנון: {exc}")
 
     app_module.tool_manager = tool_manager_from_sheets
     app_module._tool2_submissions_override_installed = True
