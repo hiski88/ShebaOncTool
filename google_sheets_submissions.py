@@ -227,19 +227,27 @@ def _notes_by_day(value: str) -> dict[int, list[str]]:
     return result
 
 
+def _next_planning_title(existing_titles: set[str], year: int, month: int) -> str:
+    base = f"{month}-{str(year)[-2:]}"
+    if base not in existing_titles:
+        return base
+    version = 2
+    while f"{base} v{version}" in existing_titles:
+        version += 1
+    return f"{base} v{version}"
+
+
 def create_planning_sheet(st, year: int, month: int, month_rows, selected_submissions: list[dict[str, str]]) -> str:
-    """Create one RTL monthly planning tab with yellow X cells for blocked/vacation days."""
+    """Create a new versioned RTL monthly planning tab with yellow X cells."""
     if not selected_submissions:
         raise RuntimeError("לא נבחרו הגשות לתכנון.")
 
     service, spreadsheet_id, _ = _service(st)
-    title = f"תכנון {month:02d}-{year:04d}"
     metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
     existing_titles = {
         item.get("properties", {}).get("title", "") for item in metadata.get("sheets", [])
     }
-    if title in existing_titles:
-        raise RuntimeError(f"כבר קיימת כרטיסייה בשם '{title}'.")
+    title = _next_planning_title(existing_titles, year, month)
 
     employees = [str(item.get("שם עובד", "")).strip() for item in selected_submissions]
     employees = [name for name in employees if name]
