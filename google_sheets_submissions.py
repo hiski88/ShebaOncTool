@@ -22,6 +22,12 @@ SUBMISSION_HEADERS = [
 ]
 SUBMISSION_COLUMN_COUNT = len(SUBMISSION_HEADERS)
 
+# Shared planning visual language.
+STATUS_VACATION = ("XX", "חופש - לא זמין לתורנות חצי או מלאה", {"red": 1.0, "green": 0.541, "blue": 0.541})
+STATUS_HALF_BLOCK = ("½X", "חסימת תורנות חצי - חוסמת גם תורנות מלאה", {"red": 1.0, "green": 0.749, "blue": 0.412})
+STATUS_FULL_BLOCK = ("X", "חסימת תורנות מלאה בלבד", {"red": 1.0, "green": 0.902, "blue": 0.427})
+STATUS_WANTS_DUTY = ("V", "מעוניין בתורנות", {"red": 0.545, "green": 0.820, "blue": 0.486})
+
 
 def _section(st):
     try:
@@ -220,20 +226,18 @@ def read_submissions(st, year: int, month: int) -> list[dict[str, str]]:
             continue
         if not employee.strip():
             continue
-        row = {
-            "זמן הגשה": submitted_at.strip(),
-            "שם עובד": employee.strip(),
-            "חודש": submitted_month.strip(),
-            "חסימת תורנות מלאה": full_blocks.strip(),
-            "חסימת תורנות חצי": half_blocks.strip(),
-            "חופשים": vacations.strip(),
-            "מעוניין בתורנות": wants_duty.strip(),
-            "הערה כללית": general_note.strip(),
-        }
-        # Temporary compatibility aliases for the existing Tool 2 UI.
-        row["חסימות"] = row["חסימת תורנות מלאה"]
-        row["הערות"] = row["הערה כללית"]
-        rows.append(row)
+        rows.append(
+            {
+                "זמן הגשה": submitted_at.strip(),
+                "שם עובד": employee.strip(),
+                "חודש": submitted_month.strip(),
+                "חסימת תורנות מלאה": full_blocks.strip(),
+                "חסימת תורנות חצי": half_blocks.strip(),
+                "חופשים": vacations.strip(),
+                "מעוניין בתורנות": wants_duty.strip(),
+                "הערה כללית": general_note.strip(),
+            }
+        )
     return rows
 
 
@@ -250,23 +254,6 @@ def _day_set(value: str) -> set[int]:
     return result
 
 
-def _notes_by_day(value: str) -> dict[int, list[str]]:
-    result: dict[int, list[str]] = {}
-    for part in str(value or "").split("|"):
-        part = part.strip()
-        if not part or " - " not in part:
-            continue
-        date_part, text = part.split(" - ", 1)
-        try:
-            day = int(date_part.split(".", 1)[0])
-        except (TypeError, ValueError):
-            continue
-        text = text.strip()
-        if text:
-            result.setdefault(day, []).append(text)
-    return result
-
-
 def _next_planning_title(existing_titles: set[str], year: int, month: int) -> str:
     base = f"{month}-{str(year)[-2:]}"
     if base not in existing_titles:
@@ -277,8 +264,44 @@ def _next_planning_title(existing_titles: set[str], year: int, month: int) -> st
     return f"{base} v{version}"
 
 
+def _day_status(day: int, employee: dict) -> tuple[str, str, dict] | None:
+    # Priority reflects actual availability and matches Tool 1 preview.
+    if day in employee["vacations"]:
+        return STATUS_VACATION
+    if day in employee["half_blocks"]:
+        return STATUS_HALF_BLOCK
+    if day in employee["full_blocks"]:
+        return STATUS_FULL_BLOCK
+    if day in employee["wants_duty"]:
+        return STATUS_WANTS_DUTY
+    return None
+
+
+def _colored_cell_request(sheet_id: int, row_index: int, column_index: int, color: dict) -> dict:
+    return {
+        "repeatCell": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": row_index,
+                "endRowIndex": row_index + 1,
+                "startColumnIndex": column_index,
+                "endColumnIndex": column_index + 1,
+            },
+            "cell": {
+                "userEnteredFormat": {
+                    "backgroundColor": color,
+                    "horizontalAlignment": "CENTER",
+                    "verticalAlignment": "MIDDLE",
+                    "textFormat": {"bold": True},
+                }
+            },
+            "fields": "userEnteredFormat(backgroundColor,horizontalAlignment,verticalAlignment,textFormat.bold)",
+        }
+    }
+
+
 def create_planning_sheet(st, year: int, month: int, month_rows, selected_submissions: list[dict[str, str]]) -> str:
-    """Create a new versioned RTL monthly planning tab with yellow X cells."""
+    """Create a new versioned RTL monthly planning tab with a visible legend and colored preference states."""
     if not selected_submissions:
         raise RuntimeError("לא נבחרו הגשות לתכנון.")
 
@@ -294,6 +317,9 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
     if not employees:
         raise RuntimeError("לא נמצאו שמות עובדים בהגשות שנבחרו.")
 
+    headers = ["תאריך", "יום", "חג / יום מיוחד", *employees]
+    total_columns = max(len(headers), 5)
+
     add_result = service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,
         body={
@@ -304,9 +330,9 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
                             "title": title,
                             "rightToLeft": True,
                             "gridProperties": {
-                                "rowCount": max(40, len(month_rows) + 5),
-                                "columnCount": max(12, len(employees) + 5),
-                                "frozenRowCount": 1,
+                                "rowCount": max(42, len(month_rows) + 6),
+                                "columnCount": max(12, total_columns + 2),
+                                "frozenRowCount": 2,
                                 "frozenColumnCount": 3,
                             },
                         }
@@ -323,24 +349,52 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
         employee_data.append(
             {
                 "name": str(item.get("שם עובד", "")).strip(),
-                "blocked": _day_set(item.get("חסימות", item.get("חסימת תורנות מלאה", ""))),
+                "full_blocks": _day_set(item.get("חסימת תורנות מלאה", "")),
+                "half_blocks": _day_set(item.get("חסימת תורנות חצי", "")),
                 "vacations": _day_set(item.get("חופשים", "")),
-                "notes": _notes_by_day(item.get("הערות", "")),
+                "wants_duty": _day_set(item.get("מעוניין בתורנות", "")),
+                "general_note": str(item.get("הערה כללית", "") or "").strip(),
             }
         )
 
-    headers = ["תאריך", "יום", "חג / יום מיוחד", *employees]
-    values = [headers]
-    cell_notes: list[dict] = []
-    x_cells: list[dict] = []
+    legend_row = [
+        "מקרא",
+        "XX = חופש",
+        "½X = חסימת חצי וגם מלאה",
+        "X = חסימת מלאה בלבד",
+        "V = מעוניין בתורנות",
+    ]
+    values = [legend_row, headers]
+    format_requests: list[dict] = []
+    note_requests: list[dict] = []
 
-    for row_index, row in enumerate(month_rows, start=1):
+    # Header notes carry general employee notes without cluttering the grid.
+    for employee_col, employee in enumerate(employee_data, start=3):
+        if employee["general_note"]:
+            note_requests.append(
+                {
+                    "updateCells": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": 1,
+                            "endRowIndex": 2,
+                            "startColumnIndex": employee_col,
+                            "endColumnIndex": employee_col + 1,
+                        },
+                        "rows": [{"values": [{"note": f"הערה כללית: {employee['general_note']}"}]}],
+                        "fields": "note",
+                    }
+                }
+            )
+
+    for data_offset, row in enumerate(month_rows):
+        sheet_row_index = data_offset + 2
         date_value = row.get("תאריך")
         try:
             day = int(date_value.day)
             date_text = date_value.strftime("%d.%m.%Y")
         except Exception:
-            day = int(row_index)
+            day = data_offset + 1
             date_text = str(date_value or "")
 
         output_row = [
@@ -348,56 +402,31 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
             str(row.get("יום", "") or ""),
             str(row.get("חג / יום מיוחד", "") or ""),
         ]
-        for employee_col, employee in enumerate(employee_data, start=3):
-            blocked = day in employee["blocked"]
-            vacation = day in employee["vacations"]
-            notes = employee["notes"].get(day, [])
-            output_row.append("X" if blocked or vacation else "")
 
-            note_parts: list[str] = []
-            if blocked:
-                note_parts.append("חסימה")
-            if vacation:
-                note_parts.append("חופש")
-            note_parts.extend(f"הערה: {text}" for text in notes)
-            if note_parts:
-                cell_notes.append(
-                    {
-                        "updateCells": {
-                            "range": {
-                                "sheetId": sheet_id,
-                                "startRowIndex": row_index,
-                                "endRowIndex": row_index + 1,
-                                "startColumnIndex": employee_col,
-                                "endColumnIndex": employee_col + 1,
-                            },
-                            "rows": [{"values": [{"note": "\n".join(note_parts)}]}],
-                            "fields": "note",
-                        }
+        for employee_col, employee in enumerate(employee_data, start=3):
+            status = _day_status(day, employee)
+            if status is None:
+                output_row.append("")
+                continue
+
+            symbol, description, color = status
+            output_row.append(symbol)
+            format_requests.append(_colored_cell_request(sheet_id, sheet_row_index, employee_col, color))
+            note_requests.append(
+                {
+                    "updateCells": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": sheet_row_index,
+                            "endRowIndex": sheet_row_index + 1,
+                            "startColumnIndex": employee_col,
+                            "endColumnIndex": employee_col + 1,
+                        },
+                        "rows": [{"values": [{"note": description}]}],
+                        "fields": "note",
                     }
-                )
-            if blocked or vacation:
-                x_cells.append(
-                    {
-                        "repeatCell": {
-                            "range": {
-                                "sheetId": sheet_id,
-                                "startRowIndex": row_index,
-                                "endRowIndex": row_index + 1,
-                                "startColumnIndex": employee_col,
-                                "endColumnIndex": employee_col + 1,
-                            },
-                            "cell": {
-                                "userEnteredFormat": {
-                                    "backgroundColor": {"red": 1.0, "green": 0.95, "blue": 0.55},
-                                    "horizontalAlignment": "CENTER",
-                                    "textFormat": {"bold": True},
-                                }
-                            },
-                            "fields": "userEnteredFormat(backgroundColor,horizontalAlignment,textFormat.bold)",
-                        }
-                    }
-                )
+                }
+            )
         values.append(output_row)
 
     service.spreadsheets().values().update(
@@ -407,42 +436,73 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
         body={"values": values},
     ).execute()
 
-    format_requests = [
-        {
-            "repeatCell": {
-                "range": {
-                    "sheetId": sheet_id,
-                    "startRowIndex": 0,
-                    "endRowIndex": 1,
-                    "startColumnIndex": 0,
-                    "endColumnIndex": len(headers),
-                },
-                "cell": {
-                    "userEnteredFormat": {
-                        "backgroundColor": {"red": 0.9, "green": 0.93, "blue": 0.97},
-                        "horizontalAlignment": "CENTER",
-                        "textFormat": {"bold": True},
-                    }
-                },
-                "fields": "userEnteredFormat(backgroundColor,horizontalAlignment,textFormat.bold)",
-            }
-        },
-        {
-            "autoResizeDimensions": {
-                "dimensions": {
-                    "sheetId": sheet_id,
-                    "dimension": "COLUMNS",
-                    "startIndex": 0,
-                    "endIndex": len(headers),
-                }
-            }
-        },
-        *x_cells,
-        *cell_notes,
+    # Legend cells use exactly the same colors as the planning grid.
+    legend_colors = [
+        STATUS_VACATION[2],
+        STATUS_HALF_BLOCK[2],
+        STATUS_FULL_BLOCK[2],
+        STATUS_WANTS_DUTY[2],
     ]
+    for column_index, color in enumerate(legend_colors, start=1):
+        format_requests.append(_colored_cell_request(sheet_id, 0, column_index, color))
+
+    format_requests.extend(
+        [
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": 1,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": 1,
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "backgroundColor": {"red": 0.88, "green": 0.91, "blue": 0.95},
+                            "horizontalAlignment": "CENTER",
+                            "textFormat": {"bold": True},
+                        }
+                    },
+                    "fields": "userEnteredFormat(backgroundColor,horizontalAlignment,textFormat.bold)",
+                }
+            },
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": 1,
+                        "endRowIndex": 2,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": len(headers),
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "backgroundColor": {"red": 0.84, "green": 0.88, "blue": 0.94},
+                            "horizontalAlignment": "CENTER",
+                            "verticalAlignment": "MIDDLE",
+                            "textFormat": {"bold": True},
+                        }
+                    },
+                    "fields": "userEnteredFormat(backgroundColor,horizontalAlignment,verticalAlignment,textFormat.bold)",
+                }
+            },
+            {
+                "autoResizeDimensions": {
+                    "dimensions": {
+                        "sheetId": sheet_id,
+                        "dimension": "COLUMNS",
+                        "startIndex": 0,
+                        "endIndex": total_columns,
+                    }
+                }
+            },
+        ]
+    )
+
     service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,
-        body={"requests": format_requests},
+        body={"requests": [*format_requests, *note_requests]},
     ).execute()
 
     return title
