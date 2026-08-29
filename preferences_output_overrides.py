@@ -130,7 +130,7 @@ def install(app_module) -> None:
         def capture_data_editor(data, *args, **kwargs):
             edited = original_data_editor(data, *args, **kwargs)
             try:
-                required = {"תאריך", "חופש", "הערה"}
+                required = {"תאריך", "חופש", "הערה אישית"}
                 has_block = "חסימה" in edited.columns or "חסימת תורנות מלאה" in edited.columns
                 if required.issubset(set(edited.columns)) and has_block:
                     captured["edited"] = edited
@@ -179,7 +179,14 @@ def install(app_module) -> None:
                             submission_edited = edited.copy()
                             if "חסימת תורנות מלאה" in submission_edited.columns:
                                 submission_edited["חסימה"] = submission_edited["חסימת תורנות מלאה"].fillna(False).astype(bool)
-                            values = submit_preferences(st, employee, year, month, submission_edited)
+                            values = submit_preferences(
+                                st,
+                                employee,
+                                year,
+                                month,
+                                submission_edited,
+                                general_note=str(captured.get("general_note") or "").strip(),
+                            )
                             display_month = f"{month:02d}-{year:04d}"
                             st.success(
                                 f"ההעדפות של {values[1]} לחודש {display_month} נקלטו בהצלחה."
