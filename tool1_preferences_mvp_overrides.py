@@ -66,24 +66,39 @@ def install(app_module) -> None:
         # from the user and mirrors full-duty blocking after editing.
         table["חסימה"] = False
 
-        st.caption("פעולות מהירות לכל החודש")
-        action_cols = st.columns(4)
-        for index, (column, label) in enumerate(COLUMNS):
+        def apply_bulk(column: str, state_key: str) -> None:
+            target = bool(st.session_state.get(state_key, False))
+            st.session_state[BULK_ACTION_KEY] = {
+                "year": year,
+                "month": month,
+                "column": column,
+                "value": target,
+            }
+            st.session_state[RESET_VERSION_KEY] = int(
+                st.session_state.get(RESET_VERSION_KEY, 0) or 0
+            ) + 1
+
+        # Streamlit cannot place an interactive checkbox inside a data-editor
+        # header. These controls are laid out immediately above the four
+        # checkbox columns to visually behave like a select-all header row.
+        st.caption("סימון כל העמודה")
+        control_cols = st.columns([2.0, 1.1, 1.1, 1.25, 0.8, 2.0, 1.2, 0.7, 1.1])
+        controls = [
+            (1, "מעוניין בתורנות"),
+            (2, "חסימת תורנות חצי"),
+            (3, "חסימת תורנות מלאה"),
+            (4, "חופש"),
+        ]
+        for slot, column in controls:
             state_key = f"preferences_bulk_all_{year}_{month}_{column}"
-            is_all = bool(st.session_state.get(state_key, False))
-            button_label = f"נקה הכל - {label}" if is_all else f"סמן הכל - {label}"
-            with action_cols[index]:
-                if st.button(button_label, width="stretch", key=f"bulk_{year}_{month}_{index}"):
-                    target = not is_all
-                    st.session_state[state_key] = target
-                    st.session_state[BULK_ACTION_KEY] = {
-                        "year": year,
-                        "month": month,
-                        "column": column,
-                        "value": target,
-                    }
-                    st.session_state[RESET_VERSION_KEY] = int(st.session_state.get(RESET_VERSION_KEY, 0) or 0) + 1
-                    st.rerun()
+            with control_cols[slot]:
+                st.checkbox(
+                    "הכל",
+                    key=state_key,
+                    help=f"סמן או נקה את כל עמודת {column}",
+                    on_change=apply_bulk,
+                    args=(column, state_key),
+                )
 
         edited = st.data_editor(
             table,
