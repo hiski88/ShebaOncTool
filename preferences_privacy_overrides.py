@@ -162,14 +162,14 @@ def install(app_module) -> None:
                 full_block = bool(row.get("חסימת תורנות מלאה", row.get("חסימה", False)))
                 half_block = bool(row.get("חסימת תורנות חצי", False))
                 wants_duty = bool(row.get("מעוניין בתורנות", False))
-                note = str(row.get("הערה", "") or "")
-                if vacation or full_block or half_block or wants_duty or note.strip():
+                personal_note = str(row.get("הערה אישית", "") or "")
+                if vacation or full_block or half_block or wants_duty or personal_note.strip():
                     days[date_key] = {
                         "vacation": vacation,
                         "full_block": full_block,
                         "half_block": half_block,
                         "wants_duty": wants_duty,
-                        "note": note,
+                        "personal_note": personal_note,
                     }
             return days
 
@@ -207,7 +207,7 @@ def install(app_module) -> None:
                     table.at[idx, "חסימת תורנות מלאה"] = bool(day.get("full_block", day.get("blocked", False)))
                     table.at[idx, "חסימת תורנות חצי"] = bool(day.get("half_block", False))
                     table.at[idx, "מעוניין בתורנות"] = bool(day.get("wants_duty", False))
-                    table.at[idx, "הערה"] = str(day.get("note", "") or "")
+                    table.at[idx, "הערה אישית"] = str(day.get("personal_note", day.get("note", "")) or "")
 
             if control_mask is not None and bool(control_mask.any()):
                 control_index = table.index[control_mask][0]
@@ -226,8 +226,6 @@ def install(app_module) -> None:
                 edited_real_mask = ~edited_control_mask
                 control_index = edited.index[edited_control_mask][0]
 
-                # Read the data-editor delta directly. Row 0 is the monthly
-                # control row, so changes there are explicit bulk commands.
                 editor_state = st.session_state.get(actual_key, {})
                 edited_rows = editor_state.get("edited_rows", {}) if isinstance(editor_state, dict) else {}
                 master_change = edited_rows.get(0)
@@ -268,7 +266,7 @@ def install(app_module) -> None:
                 if st.button(
                     "נקה את כל הטבלה",
                     width="stretch",
-                    key=f"clear_all_preferences_table_{year}_{month}_v6",
+                    key=f"clear_all_preferences_table_{year}_{month}_v7",
                 ):
                     _clear_browser_planning_data()
                     st.session_state[RESET_VERSION_KEY] = reset_version + 1
