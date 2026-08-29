@@ -1,7 +1,10 @@
-"""Keep Tool 1 output synchronized and render its final actions in one place."""
+"""Keep Tool 1 output synchronized and render its reviewed final actions in one place."""
 from __future__ import annotations
 
+import csv
+import hashlib
 import html
+import io
 import json
 import re
 from contextlib import nullcontext
@@ -22,6 +25,7 @@ HIDDEN_WARNINGS = {
     "יש תאריכים שסומנו גם כחופש וגם כחסימה. המערכת תשמור את שני הסימונים.",
 }
 _MONTH_FROM_FILENAME = re.compile(r"_(\d{4})_(\d{2})\.xlsx$")
+CONTROL_ROW_LABEL = "כל החודש"
 
 
 def _render_copy_button(value: str) -> None:
@@ -76,8 +80,162 @@ def _render_copy_button(value: str) -> None:
     )
 
 
+def _real_rows(edited):
+    try:
+        if "יום" in edited.columns:
+            return edited[edited["יום"].astype(str) != CONTROL_ROW_LABEL].copy()
+    except Exception:
+        pass
+    return edited.copy()
+
+
+def _day_list(edited, column: str) -> list[str]:
+    result: list[str] = []
+    if column not in edited.columns:
+        return result
+    for _, row in _real_rows(edited).iterrows():
+        if not bool(row.get(column, False)):
+            continue
+        date_value = row.get("תאריך")
+        try:
+            result.append(str(int(date_value.day)))
+        except Exception:
+            continue
+    return result
+
+
+def _submission_signature(employee: str, year: int, month: int, edited, general_note: str) -> str:
+    rows = []
+    for _, row in _real_rows(edited).iterrows():
+        date_value = row.get("תאריך")
+        try:
+            date_text = date_value.strftime("%Y-%m-%d")
+        except Exception:
+            date_text = str(date_value or "")
+        rows.append(
+            {
+                "date": date_text,
+                "vacation": bool(row.get("חופש", False)),
+                "full": bool(row.get("חסימת תורנות מלאה", row.get("חסימה", False))),
+                "half": bool(row.get("חסימת תורנות חצי", False)),
+                "wants": bool(row.get("מעוניין בתורנות", False)),
+            }
+        )
+    payload = {
+        "employee": employee.strip(),
+        "year": int(year),
+        "month": int(month),
+        "general_note": str(general_note or "").strip(),
+        "rows": rows,
+    }
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _status_for_row(row) -> tuple[str, str, str]:
+    if bool(row.get("חופש", False)):
+        return "X", "#f4cccc", "חופש"
+    if bool(row.get("חסימת תורנות חצי", False)):
+        return "½X", "#f9cb9c", "חסימת תורנות חצי"
+    if bool(row.get("חסימת תורנות מלאה", row.get("חסימה", False))):
+        return "X", "#fff2cc", "חסימת תורנות מלאה"
+    if bool(row.get("מעוניין בתורנות", False)):
+        return "V", "#d9ead3", "מעוניין בתורנות"
+    return "", "#ffffff", ""
+
+
+def _render_preview(st, employee: str, edited, general_note: str) -> None:
+    st.subheader("תצוגה לפני אישור")
+    st.markdown(
+        """
+        <div dir="rtl" style="margin: 0.25rem 0 0.8rem 0; line-height: 2;">
+          <b>מקרא:</b>
+          <span style="background:#f4cccc;border:1px solid #d8a0a0;padding:3px 8px;border-radius:4px;margin:0 4px;"><b>X</b> חופש</span>
+          <span style="background:#f9cb9c;border:1px solid #dfa96e;padding:3px 8px;border-radius:4px;margin:0 4px;"><b>½X</b> חסימת תורנות חצי וגם מלאה</span>
+          <span style="background:#fff2cc;border:1px solid #e0c979;padding:3px 8px;border-radius:4px;margin:0 4px;"><b>X</b> חסימת תורנות מלאה בלבד</span>
+          <span style="background:#d9ead3;border:1px solid #9fc392;padding:3px 8px;border-radius:4px;margin:0 4px;"><b>V</b> מעוניין בתורנות</span>
+          <span style="background:#ffffff;border:1px solid #cccccc;padding:3px 8px;border-radius:4px;margin:0 4px;">ריק - לא דווחה מגבלה או העדפה</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    header_cells = ["תאריך", "יום", "חג / יום מיוחד", employee]
+    html_rows = [
+        "<tr>"
+        + "".join(
+            f'<th style="border:1px solid #cfcfcf;background:#e6ebf2;padding:7px;text-align:center;font-weight:700;">{html.escape(str(value))}</th>'
+            for value in header_cells
+        )
+        + "</tr>"
+    ]
+
+    for _, row in _real_rows(edited).iterrows():
+        date_value = row.get("תאריך")
+        try:
+            date_text = date_value.strftime("%d.%m.%Y")
+        except Exception:
+            date_text = str(date_value or "")
+        day_text = str(row.get("יום", "") or "")
+        holiday_text = str(row.get("חג / יום מיוחד", "") or "")
+        symbol, background, description = _status_for_row(row)
+        title_attr = f' title="{html.escape(description)}"' if description else ""
+        html_rows.append(
+            "<tr>"
+            f'<td style="border:1px solid #dddddd;padding:6px;text-align:center;white-space:nowrap;">{html.escape(date_text)}</td>'
+            f'<td style="border:1px solid #dddddd;padding:6px;text-align:center;">{html.escape(day_text)}</td>'
+            f'<td style="border:1px solid #dddddd;padding:6px;text-align:center;">{html.escape(holiday_text)}</td>'
+            f'<td{title_attr} style="border:1px solid #dddddd;padding:6px;text-align:center;background:{background};font-weight:700;">{html.escape(symbol)}</td>'
+            "</tr>"
+        )
+
+    st.markdown(
+        '<div dir="rtl" style="overflow-x:auto;">'
+        '<table style="width:100%;border-collapse:collapse;font-size:0.94rem;">'
+        + "".join(html_rows)
+        + "</table></div>",
+        unsafe_allow_html=True,
+    )
+
+    note = str(general_note or "").strip()
+    if note:
+        st.markdown(f"**הערה כללית שתישלח למתכנן:** {html.escape(note)}")
+    else:
+        st.caption("הערה כללית: לא הוזנה הערה.")
+
+    st.info("זהו המידע שיועבר למתכנן. אירועי היומן וההערות האישיות אינם נשלחים.")
+
+
+def _build_csv(employee: str, year: int, month: int, edited, general_note: str) -> bytes:
+    buffer = io.StringIO(newline="")
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "שם עובד",
+            "חודש",
+            "חסימת תורנות מלאה",
+            "חסימת תורנות חצי",
+            "חופשים",
+            "מעוניין בתורנות",
+            "הערה כללית",
+        ]
+    )
+    writer.writerow(
+        [
+            employee.strip(),
+            f"{year:04d}-{month:02d}",
+            ",".join(_day_list(edited, "חסימת תורנות מלאה")),
+            ",".join(_day_list(edited, "חסימת תורנות חצי")),
+            ",".join(_day_list(edited, "חופש")),
+            ",".join(_day_list(edited, "מעוניין בתורנות")),
+            str(general_note or "").strip(),
+        ]
+    )
+    return ("\ufeff" + buffer.getvalue()).encode("utf-8")
+
+
 def install(app_module) -> None:
-    """Render submit, copy, and Excel download exactly once and in that order."""
+    """Render copy, reviewed preview, submit, and CSV download in that order."""
     if getattr(app_module, "_preferences_output_override_installed", False):
         return
 
@@ -153,53 +311,84 @@ def install(app_module) -> None:
                 return None
             return original_warning(body, *args, **kwargs)
 
-        def ordered_download_button(label, *args, **kwargs):
+        def reviewed_download_button(label, *args, **kwargs):
             file_name = str(kwargs.get("file_name", "") or "")
-            is_preferences_download = file_name.startswith("העדפות_")
+            is_preferences_download = file_name.startswith("העדפות_") and file_name.endswith(".xlsx")
 
-            if is_preferences_download and not captured["actions_rendered"]:
-                captured["actions_rendered"] = True
-                match = _MONTH_FROM_FILENAME.search(file_name)
-                year = int(match.group(1)) if match else None
-                month = int(match.group(2)) if match else None
-                employee = str(captured.get("employee") or "").strip()
-                edited = captured.get("edited")
-                ready = bool(employee and edited is not None and year is not None and month is not None)
-                sheets_ready = configured(st)
+            if not is_preferences_download:
+                return original_download_button(label, *args, **kwargs)
 
-                if ready:
-                    if st.button(
-                        "הגש העדפות",
-                        type="primary",
-                        width="stretch",
-                        key=f"submit_preferences_{year}_{month}",
-                        disabled=not sheets_ready,
-                    ):
-                        try:
-                            submission_edited = edited.copy()
-                            if "חסימת תורנות מלאה" in submission_edited.columns:
-                                submission_edited["חסימה"] = submission_edited["חסימת תורנות מלאה"].fillna(False).astype(bool)
-                            values = submit_preferences(
-                                st,
-                                employee,
-                                year,
-                                month,
-                                submission_edited,
-                                general_note=str(captured.get("general_note") or "").strip(),
-                            )
-                            display_month = f"{month:02d}-{year:04d}"
-                            st.success(
-                                f"ההעדפות של {values[1]} לחודש {display_month} נקלטו בהצלחה."
-                            )
-                        except Exception as exc:
-                            st.error(f"הגשת ההעדפות נכשלה: {exc}")
+            if captured["actions_rendered"]:
+                return None
+            captured["actions_rendered"] = True
 
-                if ready and not sheets_ready:
-                    st.caption("הגשה למאגר תופעל לאחר השלמת חיבור Google Sheets של המערכת.")
+            match = _MONTH_FROM_FILENAME.search(file_name)
+            year = int(match.group(1)) if match else None
+            month = int(match.group(2)) if match else None
+            employee = str(captured.get("employee") or "").strip()
+            edited = captured.get("edited")
+            general_note = str(captured.get("general_note") or "").strip()
+            ready = bool(employee and edited is not None and year is not None and month is not None)
 
-                _render_copy_button(captured["visible_output"])
+            _render_copy_button(captured["visible_output"])
 
-            return original_download_button(label, *args, **kwargs)
+            if not ready:
+                return None
+
+            signature = _submission_signature(employee, year, month, edited, general_note)
+            preview_key = f"preferences_preview_signature_{year}_{month}"
+            reviewed = st.session_state.get(preview_key) == signature
+
+            if st.button(
+                "הצג לפני אישור",
+                width="stretch",
+                key=f"preview_preferences_{year}_{month}",
+            ):
+                st.session_state[preview_key] = signature
+                reviewed = True
+
+            if not reviewed:
+                st.caption("לפני הגשה או הורדת CSV יש לעבור על התצוגה ולאשר שהמידע נכון.")
+                return None
+
+            _render_preview(st, employee, edited, general_note)
+
+            sheets_ready = configured(st)
+            if st.button(
+                "הגש העדפות",
+                type="primary",
+                width="stretch",
+                key=f"submit_preferences_{year}_{month}",
+                disabled=not sheets_ready,
+            ):
+                try:
+                    submission_edited = _real_rows(edited)
+                    values = submit_preferences(
+                        st,
+                        employee,
+                        year,
+                        month,
+                        submission_edited,
+                        general_note=general_note,
+                    )
+                    display_month = f"{month:02d}-{year:04d}"
+                    st.success(f"ההעדפות של {values[1]} לחודש {display_month} נקלטו בהצלחה.")
+                except Exception as exc:
+                    st.error(f"הגשת ההעדפות נכשלה: {exc}")
+
+            if not sheets_ready:
+                st.caption("הגשה למאגר תופעל לאחר השלמת חיבור Google Sheets של המערכת.")
+
+            csv_data = _build_csv(employee, year, month, edited, general_note)
+            original_download_button(
+                "הורד קובץ CSV",
+                data=csv_data,
+                file_name=f"העדפות_{employee}_{year}_{month:02d}.csv",
+                mime="text/csv; charset=utf-8",
+                width="stretch",
+                key=f"download_preferences_csv_{year}_{month}_{employee}",
+            )
+            return None
 
         st.text_area = live_text_area
         st.text_input = capture_text_input
@@ -207,7 +396,7 @@ def install(app_module) -> None:
         st.expander = simplified_expander
         st.caption = filtered_caption
         st.warning = filtered_warning
-        st.download_button = ordered_download_button
+        st.download_button = reviewed_download_button
         try:
             original()
         finally:
