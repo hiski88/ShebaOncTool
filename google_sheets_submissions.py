@@ -50,10 +50,15 @@ def _service(st):
     return service, spreadsheet_id, sheet_name
 
 
-def _submission_values(employee: str, year: int, month: int, edited) -> list[str]:
+def _submission_values(
+    employee: str,
+    year: int,
+    month: int,
+    edited,
+    general_note: str = "",
+) -> list[str]:
     blocked: list[str] = []
     vacations: list[str] = []
-    notes: list[str] = []
 
     for _, row in edited.iterrows():
         date_value = row.get("תאריך")
@@ -72,10 +77,6 @@ def _submission_values(employee: str, year: int, month: int, edited) -> list[str
         if bool(row.get("חופש", False)):
             vacations.append(str(day))
 
-        note = str(row.get("הערה", "") or "").strip()
-        if note:
-            notes.append(f"{day:02d}.{month:02d} - {note}")
-
     submitted_at = datetime.now(ZoneInfo("Asia/Jerusalem")).strftime("%d.%m.%Y %H:%M:%S")
     month_value = f"{year:04d}-{month:02d}"
     return [
@@ -84,14 +85,21 @@ def _submission_values(employee: str, year: int, month: int, edited) -> list[str
         month_value,
         ",".join(blocked),
         ",".join(vacations),
-        " | ".join(notes),
+        str(general_note or "").strip(),
     ]
 
 
-def submit_preferences(st, employee: str, year: int, month: int, edited) -> list[str]:
+def submit_preferences(
+    st,
+    employee: str,
+    year: int,
+    month: int,
+    edited,
+    general_note: str = "",
+) -> list[str]:
     """Insert a new submission directly below the header and verify it by reading it back."""
     service, spreadsheet_id, sheet_name = _service(st)
-    values = _submission_values(employee, year, month, edited)
+    values = _submission_values(employee, year, month, edited, general_note=general_note)
 
     metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
     sheet = next(
