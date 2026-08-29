@@ -252,21 +252,33 @@ def install(app_module) -> None:
             def handle_editor_change() -> None:
                 state = st.session_state.get(actual_key, {})
                 edited_rows = state.get("edited_rows", {}) if isinstance(state, dict) else {}
+                if not isinstance(edited_rows, dict) or not edited_rows:
+                    return
+
+                # A bulk command is valid only when row 0 is the ONLY edited row.
+                # data_editor keeps earlier deltas around, so any real-row delta
+                # means this callback came from an ordinary day edit, not from
+                # a fresh click on the monthly master checkbox.
+                normalized_rows = []
+                for row_index in edited_rows.keys():
+                    try:
+                        normalized_rows.append(int(row_index))
+                    except (TypeError, ValueError):
+                        continue
+                if normalized_rows != [0]:
+                    return
+
                 control_delta = edited_rows.get(0)
                 if control_delta is None:
                     control_delta = edited_rows.get("0")
                 if not isinstance(control_delta, dict):
                     return
+
                 for column in BULK_COLUMNS:
                     if column not in control_delta:
                         continue
                     target = bool(control_delta[column])
                     state_id = _master_id(year, month, column)
-                    previous = bool(master_state.get(state_id, False))
-                    # data_editor keeps earlier row deltas around. Only a real
-                    # change of the master checkbox may trigger a bulk action.
-                    if target == previous:
-                        continue
                     master_state[state_id] = target
                     st.session_state[PENDING_BULK_KEY] = {
                         "year": year,
@@ -296,12 +308,43 @@ def install(app_module) -> None:
             captured["days"] = days
             _write_browser_state(captured)
 
+            # Individual-day edits may change whether the entire column is
+            # selected. Update the master checkbox visually, but NEVER convert
+            # this derived state change into a bulk action.
+            state = st.session_state.get(actual_key, {})
+            edited_rows = state.get("edited_rows", {}) if isinstance(state, dict) else {}
+            changed_columns = set()
+            if isinstance(edited_rows, dict):
+                for row_index, delta in edited_rows.items():
+                    try:
+                        row_number = int(row_index)
+                    except (TypeError, ValueError):
+                        continue
+                    if row_number == 0 or not isinstance(delta, dict):
+                        continue
+                    for column in BULK_COLUMNS:
+                        if column in delta:
+                            changed_columns.add(column)
+
+            if changed_columns:
+                master_visual_changed = False
+                for column in changed_columns:
+                    values = edited.loc[edited_real_mask, column].fillna(False).astype(bool)
+                    derived = bool(len(values) and values.all())
+                    state_id = _master_id(year, month, column)
+                    if bool(master_state.get(state_id, False)) != derived:
+                        master_state[state_id] = derived
+                        master_visual_changed = True
+                if master_visual_changed:
+                    st.session_state[RESET_VERSION_KEY] = reset_version + 1
+                    st.rerun()
+
             if not clear_button_rendered:
                 clear_button_rendered = True
                 if st.button(
                     "נקה את כל הטבלה",
                     width="stretch",
-                    key=f"clear_all_preferences_table_{year}_{month}_v10",
+                    key=f"clear_all_preferences_table_{year}_{month}_v11",
                 ):
                     _clear_browser_planning_data()
                     st.session_state[RESET_VERSION_KEY] = reset_version + 1
