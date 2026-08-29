@@ -39,7 +39,7 @@ def install(app_module) -> None:
         st = app_module.st
         app_module.render_header(
             "1. תכנון העדפות אישיות",
-            "מסמנים חופש, חסימות והעדפות לתורנות. אירועי היומן נשארים פרטיים ומשמשים לעזר בלבד.",
+            "מסמנים חופש, חסימות והעדפות לתורנות. אירועי היומן וההערות האישיות נשארים פרטיים ומשמשים לעזר בלבד.",
         )
         year, month = app_module.month_selector("preferences", offset=1)
         employee = st.text_input("שם עובד/ת", placeholder="שם מלא", key="preferences_employee")
@@ -54,7 +54,7 @@ def install(app_module) -> None:
         table["חסימת תורנות מלאה"] = False
         table["חסימת תורנות חצי"] = False
         table["מעוניין בתורנות"] = False
-        table["הערה"] = ""
+        table["הערה אישית"] = ""
         table["חסימה"] = False
 
         control_row = {column: "" for column in table.columns}
@@ -64,7 +64,7 @@ def install(app_module) -> None:
         control_row["חסימת תורנות מלאה"] = False
         control_row["חסימת תורנות חצי"] = False
         control_row["מעוניין בתורנות"] = False
-        control_row["הערה"] = ""
+        control_row["הערה אישית"] = ""
         control_row["חסימה"] = False
         table = app_module.pd.concat(
             [app_module.pd.DataFrame([control_row]), table],
@@ -76,7 +76,7 @@ def install(app_module) -> None:
             width="stretch",
             hide_index=True,
             column_order=[
-                "הערה",
+                "הערה אישית",
                 "מעוניין בתורנות",
                 "חסימת תורנות חצי",
                 "חסימת תורנות מלאה",
@@ -96,7 +96,11 @@ def install(app_module) -> None:
                 "חסימת תורנות מלאה": st.column_config.CheckboxColumn("חסימת תורנות מלאה"),
                 "חסימת תורנות חצי": st.column_config.CheckboxColumn("חסימת תורנות חצי"),
                 "מעוניין בתורנות": st.column_config.CheckboxColumn("מעוניין בתורנות"),
-                "הערה": st.column_config.TextColumn("הערה", width="medium"),
+                "הערה אישית": st.column_config.TextColumn(
+                    "הערה אישית",
+                    width="medium",
+                    help="הערה פרטית לתכנון האישי בלבד. אינה נשלחת למתכנן.",
+                ),
             },
             key=f"preferences_table_{year}_{month}",
         )
