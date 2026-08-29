@@ -1,8 +1,8 @@
 """Private, device-local 12-hour persistence for Tool 1 planning.
 
-The planning state is stored only in this browser's localStorage. It is not
-written to a shared server-side cache or database. Stored values expire after
-12 hours and are scoped to the app origin/browser profile.
+The browser localStorage copy is only a persistence backup. During an active
+Streamlit session, session_state is the immediate source of truth so reruns
+cannot lose edits before localStorage has finished updating.
 """
 from __future__ import annotations
 
@@ -21,7 +21,8 @@ TTL_SECONDS = 12 * 60 * 60
 CLEAR_REQUEST_KEY = "preferences_private_clear_all_requested_v1"
 RESET_VERSION_KEY = "preferences_private_table_reset_version_v1"
 PENDING_BULK_KEY = "preferences_private_pending_bulk_v1"
-MASTER_STATE_KEY = "preferences_private_master_state_v1"
+SESSION_STATE_KEY = "preferences_private_live_state_v1"
+EDITOR_SNAPSHOTS_KEY = "preferences_private_editor_snapshots_v1"
 CONTROL_ROW_LABEL = "כל החודש"
 BULK_COLUMNS = [
     "חופש",
@@ -87,11 +88,49 @@ def _clear_browser_planning_data() -> None:
         pass
 
 
+def _normalize_edited_rows(value) -> dict[int, dict]:
+    """Normalize Streamlit data_editor edited_rows keys to integer row numbers."""
+    if not isinstance(value, dict):
+        return {}
+    result: dict[int, dict] = {}
+    for row_index, delta in value.items():
+        try:
+            row_number = int(row_index)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(delta, dict):
+            result[row_number] = dict(delta)
+    return result
+
+
+def _changed_cells(previous: dict[int, dict], current: dict[int, dict]) -> list[tuple[int, str, object]]:
+    """Return cells whose editor delta changed since the preceding callback."""
+    changes: list[tuple[int, str, object]] = []
+    rows = set(previous) | set(current)
+    for row in rows:
+        before = previous.get(row, {})
+        after = current.get(row, {})
+        columns = set(before) | set(after)
+        for column in columns:
+            before_has = column in before
+            after_has = column in after
+            if before_has == after_has and (not before_has or before.get(column) == after.get(column)):
+                continue
+            # If a delta disappears, the cell returned to its input value. We do
+            # not need the input value for day edits. Master clicks always appear
+            # as an explicit delta because a successful bulk action resets the
+            # editor key immediately afterward.
+            if after_has:
+                changes.append((row, column, after.get(column)))
+    return changes
+
+
 def _clear_session_planning_data(st) -> None:
     st.session_state.pop("preferences_calendar_events", None)
     st.session_state.pop("preferences_loaded_calendar_labels", None)
     st.session_state.pop(PENDING_BULK_KEY, None)
-    st.session_state.pop(MASTER_STATE_KEY, None)
+    st.session_state.pop(SESSION_STATE_KEY, None)
+    st.session_state.pop(EDITOR_SNAPSHOTS_KEY, None)
     for key in list(st.session_state.keys()):
         text = str(key)
         if text.startswith("preferences_table_"):
@@ -118,7 +157,11 @@ def install(app_module) -> None:
             _clear_session_planning_data(st)
             _clear_browser_planning_data()
 
-        saved = {} if cleared_now else (_read_browser_state() or {})
+        browser_saved = {} if cleared_now else (_read_browser_state() or {})
+        live_saved = st.session_state.get(SESSION_STATE_KEY)
+        if not isinstance(live_saved, dict):
+            live_saved = browser_saved if isinstance(browser_saved, dict) else {}
+            st.session_state[SESSION_STATE_KEY] = dict(live_saved)
 
         base = getattr(st, "_main", None)
         original_text_input = base.text_input if base is not None else st.text_input
@@ -127,13 +170,24 @@ def install(app_module) -> None:
 
         reset_version = int(st.session_state.get(RESET_VERSION_KEY, 0) or 0)
         captured = {
-            "employee": str(saved.get("employee", "") or ""),
-            "year": saved.get("year"),
-            "month": saved.get("month"),
-            "days": saved.get("days", {}) if isinstance(saved.get("days", {}), dict) else {},
-            "general_note": str(saved.get("general_note", "") or ""),
+            "employee": str(live_saved.get("employee", "") or ""),
+            "year": live_saved.get("year"),
+            "month": live_saved.get("month"),
+            "days": live_saved.get("days", {}) if isinstance(live_saved.get("days", {}), dict) else {},
+            "general_note": str(live_saved.get("general_note", "") or ""),
         }
         clear_button_rendered = False
+
+        def commit_captured() -> None:
+            payload = {
+                "employee": str(captured.get("employee", "") or ""),
+                "year": captured.get("year"),
+                "month": captured.get("month"),
+                "days": dict(captured.get("days", {}) or {}),
+                "general_note": str(captured.get("general_note", "") or ""),
+            }
+            st.session_state[SESSION_STATE_KEY] = payload
+            _write_browser_state(payload)
 
         def private_text_input(label, *args, **kwargs):
             if kwargs.get("key") == "preferences_employee":
@@ -141,6 +195,7 @@ def install(app_module) -> None:
                     kwargs["value"] = captured["employee"]
                 value = original_text_input(label, *args, **kwargs)
                 captured["employee"] = str(value or "")
+                commit_captured()
                 return value
             return original_text_input(label, *args, **kwargs)
 
@@ -151,7 +206,7 @@ def install(app_module) -> None:
                     kwargs["value"] = captured["general_note"]
                 value = original_text_area(label, *args, **kwargs)
                 captured["general_note"] = str(value or "")
-                _write_browser_state(captured)
+                commit_captured()
                 return value
             return original_text_area(label, *args, **kwargs)
 
@@ -176,9 +231,6 @@ def install(app_module) -> None:
                         "personal_note": personal_note,
                     }
             return days
-
-        def _master_id(year, month, column: str) -> str:
-            return f"{year:04d}-{month:02d}:{column}"
 
         def private_data_editor(data, *args, **kwargs):
             nonlocal clear_button_rendered
@@ -216,78 +268,55 @@ def install(app_module) -> None:
                     table.at[idx, "מעוניין בתורנות"] = bool(day.get("wants_duty", False))
                     table.at[idx, "הערה אישית"] = str(day.get("personal_note", day.get("note", "")) or "")
 
-            master_state = st.session_state.get(MASTER_STATE_KEY)
-            if not isinstance(master_state, dict):
-                master_state = {}
-                st.session_state[MASTER_STATE_KEY] = master_state
-
             pending_bulk = st.session_state.pop(PENDING_BULK_KEY, None)
             if isinstance(pending_bulk, dict):
                 if pending_bulk.get("year") == year and pending_bulk.get("month") == month:
                     column = str(pending_bulk.get("column", ""))
                     if column in BULK_COLUMNS and column in table.columns:
-                        target = bool(pending_bulk.get("value", False))
-                        table.loc[real_mask, column] = target
-                        master_state[_master_id(year, month, column)] = target
+                        table.loc[real_mask, column] = bool(pending_bulk.get("value", False))
                         captured["year"] = year
                         captured["month"] = month
                         captured["days"] = _rows_to_days(table[real_mask])
-                        _write_browser_state(captured)
+                        commit_captured()
 
+            # The master row is purely derived from the actual day values.
             if control_mask is not None and bool(control_mask.any()):
                 control_index = table.index[control_mask][0]
                 for column in BULK_COLUMNS:
-                    if column not in table.columns:
-                        continue
-                    state_id = _master_id(year, month, column)
-                    if state_id not in master_state:
+                    if column in table.columns:
                         values = table.loc[real_mask, column].fillna(False).astype(bool)
-                        master_state[state_id] = bool(len(values) and values.all())
-                    table.at[control_index, column] = bool(master_state.get(state_id, False))
+                        table.at[control_index, column] = bool(len(values) and values.all())
 
             editor_kwargs = dict(kwargs)
             actual_key = f"{source_key}_reset_{reset_version}"
             editor_kwargs["key"] = actual_key
 
+            snapshots = st.session_state.get(EDITOR_SNAPSHOTS_KEY)
+            if not isinstance(snapshots, dict):
+                snapshots = {}
+                st.session_state[EDITOR_SNAPSHOTS_KEY] = snapshots
+
             def handle_editor_change() -> None:
                 state = st.session_state.get(actual_key, {})
-                edited_rows = state.get("edited_rows", {}) if isinstance(state, dict) else {}
-                if not isinstance(edited_rows, dict) or not edited_rows:
-                    return
+                current_rows = _normalize_edited_rows(
+                    state.get("edited_rows", {}) if isinstance(state, dict) else {}
+                )
+                previous_rows = _normalize_edited_rows(snapshots.get(actual_key, {}))
+                changes = _changed_cells(previous_rows, current_rows)
+                snapshots[actual_key] = current_rows
 
-                # A bulk command is valid only when row 0 is the ONLY edited row.
-                # data_editor keeps earlier deltas around, so any real-row delta
-                # means this callback came from an ordinary day edit, not from
-                # a fresh click on the monthly master checkbox.
-                normalized_rows = []
-                for row_index in edited_rows.keys():
-                    try:
-                        normalized_rows.append(int(row_index))
-                    except (TypeError, ValueError):
+                # Only an explicit newly changed cell in row 0 can trigger bulk.
+                for row_number, column, value in changes:
+                    if row_number != 0 or column not in BULK_COLUMNS:
                         continue
-                if normalized_rows != [0]:
-                    return
-
-                control_delta = edited_rows.get(0)
-                if control_delta is None:
-                    control_delta = edited_rows.get("0")
-                if not isinstance(control_delta, dict):
-                    return
-
-                for column in BULK_COLUMNS:
-                    if column not in control_delta:
-                        continue
-                    target = bool(control_delta[column])
-                    state_id = _master_id(year, month, column)
-                    master_state[state_id] = target
                     st.session_state[PENDING_BULK_KEY] = {
                         "year": year,
                         "month": month,
                         "column": column,
-                        "value": target,
+                        "value": bool(value),
                     }
                     st.session_state[RESET_VERSION_KEY] = reset_version + 1
-                    break
+                    return
 
             editor_kwargs["on_change"] = handle_editor_change
             edited = original_data_editor(table, *args, **editor_kwargs)
@@ -306,36 +335,34 @@ def install(app_module) -> None:
             captured["year"] = year
             captured["month"] = month
             captured["days"] = days
-            _write_browser_state(captured)
+            commit_captured()
 
-            # Individual-day edits may change whether the entire column is
-            # selected. Update the master checkbox visually, but NEVER convert
-            # this derived state change into a bulk action.
-            state = st.session_state.get(actual_key, {})
-            edited_rows = state.get("edited_rows", {}) if isinstance(state, dict) else {}
-            changed_columns = set()
-            if isinstance(edited_rows, dict):
-                for row_index, delta in edited_rows.items():
-                    try:
-                        row_number = int(row_index)
-                    except (TypeError, ValueError):
-                        continue
-                    if row_number == 0 or not isinstance(delta, dict):
-                        continue
-                    for column in BULK_COLUMNS:
-                        if column in delta:
-                            changed_columns.add(column)
-
-            if changed_columns:
-                master_visual_changed = False
-                for column in changed_columns:
+            # Refresh the visual master only when an individual edit changes the
+            # all-selected status. The day data is already committed to session
+            # state, so this rerun cannot wipe the other selected days.
+            editor_state = st.session_state.get(actual_key, {})
+            current_rows = _normalize_edited_rows(
+                editor_state.get("edited_rows", {}) if isinstance(editor_state, dict) else {}
+            )
+            snapshots[actual_key] = current_rows
+            day_columns_changed = {
+                column
+                for row_number, delta in current_rows.items()
+                if row_number != 0
+                for column in BULK_COLUMNS
+                if column in delta
+            }
+            if day_columns_changed and edited_control_mask is not None and bool(edited_control_mask.any()):
+                control_index = edited.index[edited_control_mask][0]
+                visual_needs_refresh = False
+                for column in day_columns_changed:
                     values = edited.loc[edited_real_mask, column].fillna(False).astype(bool)
                     derived = bool(len(values) and values.all())
-                    state_id = _master_id(year, month, column)
-                    if bool(master_state.get(state_id, False)) != derived:
-                        master_state[state_id] = derived
-                        master_visual_changed = True
-                if master_visual_changed:
+                    displayed = bool(edited.at[control_index, column])
+                    if displayed != derived:
+                        visual_needs_refresh = True
+                        break
+                if visual_needs_refresh:
                     st.session_state[RESET_VERSION_KEY] = reset_version + 1
                     st.rerun()
 
@@ -344,9 +371,10 @@ def install(app_module) -> None:
                 if st.button(
                     "נקה את כל הטבלה",
                     width="stretch",
-                    key=f"clear_all_preferences_table_{year}_{month}_v11",
+                    key=f"clear_all_preferences_table_{year}_{month}_v12",
                 ):
                     _clear_browser_planning_data()
+                    _clear_session_planning_data(st)
                     st.session_state[RESET_VERSION_KEY] = reset_version + 1
                     st.session_state[CLEAR_REQUEST_KEY] = True
                     st.rerun()
