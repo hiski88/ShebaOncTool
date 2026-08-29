@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 
-CONTROL_ROW_LABEL = "סמן/נקה הכל"
+CONTROL_ROW_LABEL = "כל החודש"
 
 
 def _simple_output(employee: str, edited, general_note: str) -> str:
