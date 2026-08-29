@@ -20,6 +20,7 @@ CALENDAR_LABELS_KEY = "medstaff_oncology_loaded_calendar_labels_v1"
 TTL_SECONDS = 12 * 60 * 60
 CLEAR_REQUEST_KEY = "preferences_private_clear_all_requested_v1"
 RESET_VERSION_KEY = "preferences_private_table_reset_version_v1"
+BULK_ACTION_KEY = "preferences_bulk_action_v1"
 
 
 def _read_browser_state():
@@ -81,6 +82,7 @@ def _clear_browser_planning_data() -> None:
 def _clear_session_planning_data(st) -> None:
     st.session_state.pop("preferences_calendar_events", None)
     st.session_state.pop("preferences_loaded_calendar_labels", None)
+    st.session_state.pop(BULK_ACTION_KEY, None)
     for key in list(st.session_state.keys()):
         text = str(key)
         if text.startswith("preferences_table_"):
@@ -88,6 +90,10 @@ def _clear_session_planning_data(st) -> None:
         elif text.startswith("preferences_simple_output_"):
             st.session_state.pop(key, None)
         elif text.startswith("preferences_machine_output_"):
+            st.session_state.pop(key, None)
+        elif text.startswith("preferences_general_note_"):
+            st.session_state.pop(key, None)
+        elif text.startswith("preferences_bulk_all_"):
             st.session_state.pop(key, None)
 
 
@@ -105,15 +111,11 @@ def install(app_module) -> None:
             _clear_session_planning_data(st)
             _clear_browser_planning_data()
 
-        # Do not immediately reload stale browser data on the rerun that follows
-        # a clear action. The clean table rendered below becomes the new state.
         saved = {} if cleared_now else (_read_browser_state() or {})
 
-        # Always call the underlying DeltaGenerator methods rather than a
-        # possibly monkey-patched module-level function from an earlier rerun.
-        # This prevents wrapper recursion and duplicate Streamlit widget keys.
         base = getattr(st, "_main", None)
         original_text_input = base.text_input if base is not None else st.text_input
+        original_text_area = base.text_area if base is not None else st.text_area
         original_data_editor = base.data_editor if base is not None else st.data_editor
 
         reset_version = int(st.session_state.get(RESET_VERSION_KEY, 0) or 0)
@@ -122,6 +124,7 @@ def install(app_module) -> None:
             "year": saved.get("year"),
             "month": saved.get("month"),
             "days": saved.get("days", {}) if isinstance(saved.get("days", {}), dict) else {},
+            "general_note": str(saved.get("general_note", "") or ""),
         }
         clear_button_rendered = False
 
@@ -133,6 +136,17 @@ def install(app_module) -> None:
                 captured["employee"] = str(value or "")
                 return value
             return original_text_input(label, *args, **kwargs)
+
+        def private_text_area(label, *args, **kwargs):
+            key = str(kwargs.get("key", ""))
+            if key.startswith("preferences_general_note_"):
+                if key not in st.session_state and captured["general_note"]:
+                    kwargs["value"] = captured["general_note"]
+                value = original_text_area(label, *args, **kwargs)
+                captured["general_note"] = str(value or "")
+                _write_browser_state(captured)
+                return value
+            return original_text_area(label, *args, **kwargs)
 
         def private_data_editor(data, *args, **kwargs):
             nonlocal clear_button_rendered
@@ -158,13 +172,19 @@ def install(app_module) -> None:
                     day = captured["days"].get(date_key)
                     if not isinstance(day, dict):
                         continue
-                    table.at[idx, "חסימה"] = bool(day.get("blocked", False))
                     table.at[idx, "חופש"] = bool(day.get("vacation", False))
+                    table.at[idx, "חסימת תורנות מלאה"] = bool(day.get("full_block", day.get("blocked", False)))
+                    table.at[idx, "חסימת תורנות חצי"] = bool(day.get("half_block", False))
+                    table.at[idx, "מעוניין בתורנות"] = bool(day.get("wants_duty", False))
                     table.at[idx, "הערה"] = str(day.get("note", "") or "")
 
-            # A reset version is appended to the actual widget key. Incrementing
-            # it guarantees that Streamlit cannot reuse stale checkbox edits
-            # after the user clears the table.
+            bulk_action = st.session_state.pop(BULK_ACTION_KEY, None)
+            if isinstance(bulk_action, dict):
+                if bulk_action.get("year") == year and bulk_action.get("month") == month:
+                    column = str(bulk_action.get("column", ""))
+                    if column in table.columns:
+                        table[column] = bool(bulk_action.get("value", False))
+
             editor_kwargs = dict(kwargs)
             editor_kwargs["key"] = f"{source_key}_reset_{reset_version}"
             edited = original_data_editor(table, *args, **editor_kwargs)
@@ -173,13 +193,17 @@ def install(app_module) -> None:
             try:
                 for _, row in edited.iterrows():
                     date_key = app_module.pd.Timestamp(row["תאריך"]).date().isoformat()
-                    blocked = bool(row.get("חסימה", False))
                     vacation = bool(row.get("חופש", False))
+                    full_block = bool(row.get("חסימת תורנות מלאה", row.get("חסימה", False)))
+                    half_block = bool(row.get("חסימת תורנות חצי", False))
+                    wants_duty = bool(row.get("מעוניין בתורנות", False))
                     note = str(row.get("הערה", "") or "")
-                    if blocked or vacation or note.strip():
+                    if vacation or full_block or half_block or wants_duty or note.strip():
                         days[date_key] = {
-                            "blocked": blocked,
                             "vacation": vacation,
+                            "full_block": full_block,
+                            "half_block": half_block,
+                            "wants_duty": wants_duty,
                             "note": note,
                         }
             except Exception:
@@ -195,7 +219,7 @@ def install(app_module) -> None:
                 if st.button(
                     "נקה את כל הטבלה",
                     width="stretch",
-                    key=f"clear_all_preferences_table_{year}_{month}_v3",
+                    key=f"clear_all_preferences_table_{year}_{month}_v4",
                 ):
                     _clear_browser_planning_data()
                     st.session_state[RESET_VERSION_KEY] = reset_version + 1
@@ -205,11 +229,13 @@ def install(app_module) -> None:
             return edited
 
         st.text_input = private_text_input
+        st.text_area = private_text_area
         st.data_editor = private_data_editor
         try:
             original()
         finally:
             st.text_input = original_text_input
+            st.text_area = original_text_area
             st.data_editor = original_data_editor
 
     app_module.tool_preferences = private_tool_preferences
