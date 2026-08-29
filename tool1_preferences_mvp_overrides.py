@@ -106,9 +106,6 @@ def install(app_module) -> None:
         )
 
         real_rows = edited[edited["יום"].astype(str) != CONTROL_ROW_LABEL]
-        vacation_count = int(real_rows["חופש"].fillna(False).astype(bool).sum())
-        if vacation_count:
-            st.caption("חופש גובר על כל סימון אחר באותו יום. סימונים אחרים נשמרים ולא נמחקים.")
 
         general_note = st.text_area(
             "הערה כללית להגשה",
