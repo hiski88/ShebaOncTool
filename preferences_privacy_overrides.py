@@ -20,6 +20,7 @@ CALENDAR_LABELS_KEY = "medstaff_oncology_loaded_calendar_labels_v1"
 TTL_SECONDS = 12 * 60 * 60
 CLEAR_REQUEST_KEY = "preferences_private_clear_all_requested_v1"
 RESET_VERSION_KEY = "preferences_private_table_reset_version_v1"
+PENDING_BULK_KEY = "preferences_private_pending_bulk_v1"
 CONTROL_ROW_LABEL = "כל החודש"
 BULK_COLUMNS = [
     "חופש",
@@ -88,6 +89,7 @@ def _clear_browser_planning_data() -> None:
 def _clear_session_planning_data(st) -> None:
     st.session_state.pop("preferences_calendar_events", None)
     st.session_state.pop("preferences_loaded_calendar_labels", None)
+    st.session_state.pop(PENDING_BULK_KEY, None)
     for key in list(st.session_state.keys()):
         text = str(key)
         if text.startswith("preferences_table_"):
@@ -209,6 +211,17 @@ def install(app_module) -> None:
                     table.at[idx, "מעוניין בתורנות"] = bool(day.get("wants_duty", False))
                     table.at[idx, "הערה אישית"] = str(day.get("personal_note", day.get("note", "")) or "")
 
+            pending_bulk = st.session_state.pop(PENDING_BULK_KEY, None)
+            if isinstance(pending_bulk, dict):
+                if pending_bulk.get("year") == year and pending_bulk.get("month") == month:
+                    column = str(pending_bulk.get("column", ""))
+                    if column in BULK_COLUMNS and column in table.columns:
+                        table.loc[real_mask, column] = bool(pending_bulk.get("value", False))
+                        captured["year"] = year
+                        captured["month"] = month
+                        captured["days"] = _rows_to_days(table[real_mask])
+                        _write_browser_state(captured)
+
             if control_mask is not None and bool(control_mask.any()):
                 control_index = table.index[control_mask][0]
                 for column in BULK_COLUMNS:
@@ -219,35 +232,32 @@ def install(app_module) -> None:
             editor_kwargs = dict(kwargs)
             actual_key = f"{source_key}_reset_{reset_version}"
             editor_kwargs["key"] = actual_key
+
+            def handle_editor_change() -> None:
+                state = st.session_state.get(actual_key, {})
+                edited_rows = state.get("edited_rows", {}) if isinstance(state, dict) else {}
+                control_delta = edited_rows.get(0)
+                if control_delta is None:
+                    control_delta = edited_rows.get("0")
+                if not isinstance(control_delta, dict):
+                    return
+                for column in BULK_COLUMNS:
+                    if column in control_delta:
+                        st.session_state[PENDING_BULK_KEY] = {
+                            "year": year,
+                            "month": month,
+                            "column": column,
+                            "value": bool(control_delta[column]),
+                        }
+                        st.session_state[RESET_VERSION_KEY] = reset_version + 1
+                        break
+
+            editor_kwargs["on_change"] = handle_editor_change
             edited = original_data_editor(table, *args, **editor_kwargs)
 
             edited_control_mask = edited["יום"].astype(str) == CONTROL_ROW_LABEL if "יום" in edited.columns else None
-            if edited_control_mask is not None and bool(edited_control_mask.any()):
+            if edited_control_mask is not None:
                 edited_real_mask = ~edited_control_mask
-                control_index = edited.index[edited_control_mask][0]
-
-                editor_state = st.session_state.get(actual_key, {})
-                edited_rows = editor_state.get("edited_rows", {}) if isinstance(editor_state, dict) else {}
-                master_change = edited_rows.get(0)
-                if master_change is None:
-                    master_change = edited_rows.get("0")
-
-                bulk_applied = False
-                if isinstance(master_change, dict):
-                    for column in BULK_COLUMNS:
-                        if column in master_change:
-                            target = bool(master_change[column])
-                            edited.loc[edited_real_mask, column] = target
-                            edited.at[control_index, column] = target
-                            bulk_applied = True
-
-                if bulk_applied:
-                    captured["year"] = year
-                    captured["month"] = month
-                    captured["days"] = _rows_to_days(edited[edited_real_mask])
-                    _write_browser_state(captured)
-                    st.session_state[RESET_VERSION_KEY] = reset_version + 1
-                    st.rerun()
             else:
                 edited_real_mask = app_module.pd.Series([True] * len(edited), index=edited.index)
 
@@ -266,7 +276,7 @@ def install(app_module) -> None:
                 if st.button(
                     "נקה את כל הטבלה",
                     width="stretch",
-                    key=f"clear_all_preferences_table_{year}_{month}_v7",
+                    key=f"clear_all_preferences_table_{year}_{month}_v8",
                 ):
                     _clear_browser_planning_data()
                     st.session_state[RESET_VERSION_KEY] = reset_version + 1
