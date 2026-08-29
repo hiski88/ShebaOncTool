@@ -8,6 +8,18 @@ import pandas as pd
 from google_sheets_submissions import configured, create_planning_sheet, read_submissions
 
 
+LEGEND_HTML = """
+<div dir="rtl" style="margin:0.25rem 0 0.8rem 0;line-height:2.2;">
+  <b>מקרא לכרטיסיית התכנון:</b>
+  <span style="background:#ff8a8a;border:1px solid #d95f5f;padding:4px 9px;border-radius:5px;margin:0 4px;"><b>XX</b> חופש</span>
+  <span style="background:#ffbf69;border:1px solid #d9943e;padding:4px 9px;border-radius:5px;margin:0 4px;"><b>½X</b> חסימת חצי וגם מלאה</span>
+  <span style="background:#ffe66d;border:1px solid #d5bd38;padding:4px 9px;border-radius:5px;margin:0 4px;"><b>X</b> חסימת מלאה בלבד</span>
+  <span style="background:#8bd17c;border:1px solid #58a64a;padding:4px 9px;border-radius:5px;margin:0 4px;"><b>V</b> מעוניין בתורנות</span>
+  <span style="background:#ffffff;border:1px solid #bdbdbd;padding:4px 9px;border-radius:5px;margin:0 4px;">ריק - לא דווחה מגבלה או העדפה</span>
+</div>
+"""
+
+
 def install(app_module) -> None:
     if getattr(app_module, "_tool2_submissions_override_installed", False):
         return
@@ -47,6 +59,8 @@ def install(app_module) -> None:
             details = ", ".join(f"{name} ({counts[name]})" for name in duplicate_names)
             st.warning(f"זוהו הגשות כפולות: {details}")
 
+        st.markdown(LEGEND_HTML, unsafe_allow_html=True)
+
         display_rows = []
         seen = Counter()
         for item in submissions:
@@ -66,9 +80,11 @@ def install(app_module) -> None:
             display_rows.append(
                 {
                     "כפילות": duplicate_status,
-                    "הערות": item["הערות"],
+                    "הערה כללית": item["הערה כללית"],
+                    "מעוניין בתורנות": item["מעוניין בתורנות"],
                     "חופשים": item["חופשים"],
-                    "חסימות": item["חסימות"],
+                    "חסימת תורנות חצי": item["חסימת תורנות חצי"],
+                    "חסימת תורנות מלאה": item["חסימת תורנות מלאה"],
                     "שם עובד": name,
                     "זמן הגשה": item["זמן הגשה"],
                     "לכלול בתכנון": is_newest_for_name,
@@ -76,11 +92,21 @@ def install(app_module) -> None:
             )
 
         st.subheader("בחירת הגשות לתכנון")
+        readonly_columns = [
+            "זמן הגשה",
+            "שם עובד",
+            "חסימת תורנות מלאה",
+            "חסימת תורנות חצי",
+            "חופשים",
+            "מעוניין בתורנות",
+            "הערה כללית",
+            "כפילות",
+        ]
         selected_table = st.data_editor(
             pd.DataFrame(display_rows),
             width="stretch",
             hide_index=True,
-            disabled=["זמן הגשה", "שם עובד", "חסימות", "חופשים", "הערות", "כפילות"],
+            disabled=readonly_columns,
             column_config={
                 "לכלול בתכנון": st.column_config.CheckboxColumn("לכלול בתכנון"),
             },
@@ -115,9 +141,11 @@ def install(app_module) -> None:
             selected_submissions = [
                 {
                     "שם עובד": str(row.get("שם עובד", "") or "").strip(),
-                    "חסימות": str(row.get("חסימות", "") or "").strip(),
+                    "חסימת תורנות מלאה": str(row.get("חסימת תורנות מלאה", "") or "").strip(),
+                    "חסימת תורנות חצי": str(row.get("חסימת תורנות חצי", "") or "").strip(),
                     "חופשים": str(row.get("חופשים", "") or "").strip(),
-                    "הערות": str(row.get("הערות", "") or "").strip(),
+                    "מעוניין בתורנות": str(row.get("מעוניין בתורנות", "") or "").strip(),
+                    "הערה כללית": str(row.get("הערה כללית", "") or "").strip(),
                 }
                 for _, row in selected_rows.iterrows()
             ]
