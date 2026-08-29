@@ -106,6 +106,7 @@ def install(app_module) -> None:
         )
 
         real_rows = edited[edited["יום"].astype(str) != CONTROL_ROW_LABEL]
+        st.caption("שימו לב: אם מסמנים חופש, יש לחסום תורנות מלאה ביום שלפני.")
 
         general_note = st.text_area(
             "הערה כללית להגשה",
