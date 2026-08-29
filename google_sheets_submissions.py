@@ -10,6 +10,17 @@ from googleapiclient.discovery import build
 DEFAULT_SPREADSHEET_ID = "1jtnyrbQtB2QXvhS6vU50S24kMDnM1WWcpeFnPmsbYI8"
 DEFAULT_SHEET_NAME = "Submissions"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+SUBMISSION_HEADERS = [
+    "זמן הגשה",
+    "שם עובד",
+    "חודש",
+    "חסימת תורנות מלאה",
+    "חסימת תורנות חצי",
+    "חופשים",
+    "מעוניין בתורנות",
+    "הערה כללית",
+]
+SUBMISSION_COLUMN_COUNT = len(SUBMISSION_HEADERS)
 
 
 def _section(st):
@@ -57,8 +68,10 @@ def _submission_values(
     edited,
     general_note: str = "",
 ) -> list[str]:
-    blocked: list[str] = []
+    full_blocks: list[str] = []
+    half_blocks: list[str] = []
     vacations: list[str] = []
+    wants_duty: list[str] = []
 
     for _, row in edited.iterrows():
         date_value = row.get("תאריך")
@@ -72,10 +85,14 @@ def _submission_values(
             except Exception:
                 continue
 
-        if bool(row.get("חסימה", False)):
-            blocked.append(str(day))
+        if bool(row.get("חסימת תורנות מלאה", row.get("חסימה", False))):
+            full_blocks.append(str(day))
+        if bool(row.get("חסימת תורנות חצי", False)):
+            half_blocks.append(str(day))
         if bool(row.get("חופש", False)):
             vacations.append(str(day))
+        if bool(row.get("מעוניין בתורנות", False)):
+            wants_duty.append(str(day))
 
     submitted_at = datetime.now(ZoneInfo("Asia/Jerusalem")).strftime("%d.%m.%Y %H:%M:%S")
     month_value = f"{year:04d}-{month:02d}"
@@ -83,8 +100,10 @@ def _submission_values(
         submitted_at,
         employee.strip(),
         month_value,
-        ",".join(blocked),
+        ",".join(full_blocks),
+        ",".join(half_blocks),
         ",".join(vacations),
+        ",".join(wants_duty),
         str(general_note or "").strip(),
     ]
 
@@ -129,7 +148,7 @@ def submit_preferences(
         },
     ).execute()
 
-    range_name = f"'{sheet_name}'!A2:F2"
+    range_name = f"'{sheet_name}'!A2:H2"
     try:
         service.spreadsheets().values().update(
             spreadsheetId=spreadsheet_id,
@@ -166,8 +185,8 @@ def submit_preferences(
         valueRenderOption="FORMATTED_VALUE",
     ).execute()
     stored = check.get("values", [[]])[0]
-    padded = [str(item) for item in stored] + [""] * (6 - len(stored))
-    if padded[:6] != values:
+    padded = [str(item) for item in stored] + [""] * (SUBMISSION_COLUMN_COUNT - len(stored))
+    if padded[:SUBMISSION_COLUMN_COUNT] != values:
         raise RuntimeError("ההגשה נשלחה, אך לא ניתן היה לאמת שהמידע נקלט במלואו.")
 
     return values
@@ -176,7 +195,7 @@ def submit_preferences(
 def read_submissions(st, year: int, month: int) -> list[dict[str, str]]:
     """Read Submissions rows for one month, preserving newest-first sheet order."""
     service, spreadsheet_id, sheet_name = _service(st)
-    range_name = f"'{sheet_name}'!A2:F"
+    range_name = f"'{sheet_name}'!A2:H"
     response = service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id,
         range=range_name,
@@ -186,22 +205,35 @@ def read_submissions(st, year: int, month: int) -> list[dict[str, str]]:
     month_value = f"{year:04d}-{month:02d}"
     rows: list[dict[str, str]] = []
     for raw in response.get("values", []):
-        values = [str(item) for item in raw] + [""] * (6 - len(raw))
-        submitted_at, employee, submitted_month, blocked, vacations, notes = values[:6]
+        values = [str(item) for item in raw] + [""] * (SUBMISSION_COLUMN_COUNT - len(raw))
+        (
+            submitted_at,
+            employee,
+            submitted_month,
+            full_blocks,
+            half_blocks,
+            vacations,
+            wants_duty,
+            general_note,
+        ) = values[:SUBMISSION_COLUMN_COUNT]
         if submitted_month.strip() != month_value:
             continue
         if not employee.strip():
             continue
-        rows.append(
-            {
-                "זמן הגשה": submitted_at.strip(),
-                "שם עובד": employee.strip(),
-                "חודש": submitted_month.strip(),
-                "חסימות": blocked.strip(),
-                "חופשים": vacations.strip(),
-                "הערות": notes.strip(),
-            }
-        )
+        row = {
+            "זמן הגשה": submitted_at.strip(),
+            "שם עובד": employee.strip(),
+            "חודש": submitted_month.strip(),
+            "חסימת תורנות מלאה": full_blocks.strip(),
+            "חסימת תורנות חצי": half_blocks.strip(),
+            "חופשים": vacations.strip(),
+            "מעוניין בתורנות": wants_duty.strip(),
+            "הערה כללית": general_note.strip(),
+        }
+        # Temporary compatibility aliases for the existing Tool 2 UI.
+        row["חסימות"] = row["חסימת תורנות מלאה"]
+        row["הערות"] = row["הערה כללית"]
+        rows.append(row)
     return rows
 
 
@@ -291,7 +323,7 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
         employee_data.append(
             {
                 "name": str(item.get("שם עובד", "")).strip(),
-                "blocked": _day_set(item.get("חסימות", "")),
+                "blocked": _day_set(item.get("חסימות", item.get("חסימת תורנות מלאה", ""))),
                 "vacations": _day_set(item.get("חופשים", "")),
                 "notes": _notes_by_day(item.get("הערות", "")),
             }
