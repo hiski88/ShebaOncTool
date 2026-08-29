@@ -2,22 +2,15 @@
 from __future__ import annotations
 
 
-BULK_ACTION_KEY = "preferences_bulk_action_v1"
-RESET_VERSION_KEY = "preferences_private_table_reset_version_v1"
-
-
-COLUMNS = [
-    ("חופש", "חופש"),
-    ("חסימת תורנות מלאה", "חסימת תורנות מלאה"),
-    ("חסימת תורנות חצי", "חסימת תורנות חצי"),
-    ("מעוניין בתורנות", "מעוניין בתורנות"),
-]
+CONTROL_ROW_LABEL = "סמן/נקה הכל"
 
 
 def _simple_output(employee: str, edited, general_note: str) -> str:
     def days_for(column: str) -> list[str]:
         result: list[str] = []
         for _, row in edited.iterrows():
+            if str(row.get("יום", "") or "") == CONTROL_ROW_LABEL:
+                continue
             if bool(row.get(column, False)):
                 try:
                     result.append(str(int(row["תאריך"].day)))
@@ -62,43 +55,21 @@ def install(app_module) -> None:
         table["חסימת תורנות חצי"] = False
         table["מעוניין בתורנות"] = False
         table["הערה"] = ""
-        # Compatibility field for the current submission backend. It is hidden
-        # from the user and mirrors full-duty blocking after editing.
         table["חסימה"] = False
 
-        def apply_bulk(column: str, state_key: str) -> None:
-            target = bool(st.session_state.get(state_key, False))
-            st.session_state[BULK_ACTION_KEY] = {
-                "year": year,
-                "month": month,
-                "column": column,
-                "value": target,
-            }
-            st.session_state[RESET_VERSION_KEY] = int(
-                st.session_state.get(RESET_VERSION_KEY, 0) or 0
-            ) + 1
-
-        # Streamlit cannot place an interactive checkbox inside a data-editor
-        # header. These controls are laid out immediately above the four
-        # checkbox columns to visually behave like a select-all header row.
-        st.caption("סימון כל העמודה")
-        control_cols = st.columns([2.0, 1.1, 1.1, 1.25, 0.8, 2.0, 1.2, 0.7, 1.1])
-        controls = [
-            (1, "מעוניין בתורנות"),
-            (2, "חסימת תורנות חצי"),
-            (3, "חסימת תורנות מלאה"),
-            (4, "חופש"),
-        ]
-        for slot, column in controls:
-            state_key = f"preferences_bulk_all_{year}_{month}_{column}"
-            with control_cols[slot]:
-                st.checkbox(
-                    "הכל",
-                    key=state_key,
-                    help=f"סמן או נקה את כל עמודת {column}",
-                    on_change=apply_bulk,
-                    args=(column, state_key),
-                )
+        control_row = {column: "" for column in table.columns}
+        control_row["תאריך"] = app_module.pd.NaT
+        control_row["יום"] = CONTROL_ROW_LABEL
+        control_row["חופש"] = False
+        control_row["חסימת תורנות מלאה"] = False
+        control_row["חסימת תורנות חצי"] = False
+        control_row["מעוניין בתורנות"] = False
+        control_row["הערה"] = ""
+        control_row["חסימה"] = False
+        table = app_module.pd.concat(
+            [app_module.pd.DataFrame([control_row]), table],
+            ignore_index=True,
+        )
 
         edited = st.data_editor(
             table,
@@ -130,10 +101,8 @@ def install(app_module) -> None:
             key=f"preferences_table_{year}_{month}",
         )
 
-        # Vacation has precedence over every other availability/preference flag.
-        # We intentionally do not erase the other values, so cancelling vacation
-        # restores the user's previous choices without data loss.
-        vacation_count = int(edited["חופש"].fillna(False).astype(bool).sum())
+        real_rows = edited[edited["יום"].astype(str) != CONTROL_ROW_LABEL]
+        vacation_count = int(real_rows["חופש"].fillna(False).astype(bool).sum())
         if vacation_count:
             st.caption("חופש גובר על כל סימון אחר באותו יום. סימונים אחרים נשמרים ולא נמחקים.")
 
@@ -149,14 +118,12 @@ def install(app_module) -> None:
             return
 
         try:
-            # Keep current backend/export compatibility until Tool 2 storage is
-            # upgraded in the next phase.
-            edited = edited.copy()
-            edited["חסימה"] = edited["חסימת תורנות מלאה"].fillna(False).astype(bool)
-            backend_edited = edited.rename(columns={"חסימה": "לא זמין"}).copy()
+            edited_for_output = real_rows.copy()
+            edited_for_output["חסימה"] = edited_for_output["חסימת תורנות מלאה"].fillna(False).astype(bool)
+            backend_edited = edited_for_output.rename(columns={"חסימה": "לא זמין"}).copy()
             payload = app_module.build_submission(employee, year, month, backend_edited)
             machine_output = app_module.encode_submission(payload)
-            simple_output = _simple_output(employee, edited, general_note)
+            simple_output = _simple_output(employee, edited_for_output, general_note)
 
             st.subheader("פלט פשוט להעברה")
             st.text_area(
