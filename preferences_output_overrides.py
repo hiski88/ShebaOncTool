@@ -97,6 +97,7 @@ def install(app_module) -> None:
             "visible_output": "",
             "employee": "",
             "edited": None,
+            "general_note": "",
             "actions_rendered": False,
         }
 
@@ -114,6 +115,10 @@ def install(app_module) -> None:
                 key = kwargs.get("key")
                 if key:
                     st.session_state[key] = value
+            elif label == "הערה כללית להגשה":
+                value = original_text_area(label, *args, **kwargs)
+                captured["general_note"] = str(value or "")
+                return value
             return original_text_area(label, *args, **kwargs)
 
         def capture_text_input(label, *args, **kwargs):
@@ -125,8 +130,9 @@ def install(app_module) -> None:
         def capture_data_editor(data, *args, **kwargs):
             edited = original_data_editor(data, *args, **kwargs)
             try:
-                required = {"תאריך", "חסימה", "חופש", "הערה"}
-                if required.issubset(set(edited.columns)):
+                required = {"תאריך", "חופש", "הערה"}
+                has_block = "חסימה" in edited.columns or "חסימת תורנות מלאה" in edited.columns
+                if required.issubset(set(edited.columns)) and has_block:
                     captured["edited"] = edited
             except Exception:
                 pass
@@ -170,7 +176,10 @@ def install(app_module) -> None:
                         disabled=not sheets_ready,
                     ):
                         try:
-                            values = submit_preferences(st, employee, year, month, edited)
+                            submission_edited = edited.copy()
+                            if "חסימת תורנות מלאה" in submission_edited.columns:
+                                submission_edited["חסימה"] = submission_edited["חסימת תורנות מלאה"].fillna(False).astype(bool)
+                            values = submit_preferences(st, employee, year, month, submission_edited)
                             display_month = f"{month:02d}-{year:04d}"
                             st.success(
                                 f"ההעדפות של {values[1]} לחודש {display_month} נקלטו בהצלחה."
