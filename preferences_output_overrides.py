@@ -27,6 +27,13 @@ HIDDEN_WARNINGS = {
 _MONTH_FROM_FILENAME = re.compile(r"_(\d{4})_(\d{2})\.xlsx$")
 CONTROL_ROW_LABEL = "כל החודש"
 
+# Shared visual language for employee availability/preferences.
+COLOR_VACATION = "#ff8a8a"
+COLOR_HALF_BLOCK = "#ffbf69"
+COLOR_FULL_BLOCK = "#ffe66d"
+COLOR_WANTS_DUTY = "#8bd17c"
+COLOR_AVAILABLE = "#ffffff"
+
 
 def _render_copy_button(value: str) -> None:
     if not value:
@@ -133,38 +140,40 @@ def _submission_signature(employee: str, year: int, month: int, edited, general_
 
 
 def _status_for_row(row) -> tuple[str, str, str]:
+    # Priority reflects actual availability: vacation > half block > full block > positive preference.
     if bool(row.get("חופש", False)):
-        return "X", "#f4cccc", "חופש"
+        return "XX", COLOR_VACATION, "חופש - לא זמין לתורנות חצי או מלאה"
     if bool(row.get("חסימת תורנות חצי", False)):
-        return "½X", "#f9cb9c", "חסימת תורנות חצי"
+        return "½X", COLOR_HALF_BLOCK, "חסימת תורנות חצי - חוסמת גם תורנות מלאה"
     if bool(row.get("חסימת תורנות מלאה", row.get("חסימה", False))):
-        return "X", "#fff2cc", "חסימת תורנות מלאה"
+        return "X", COLOR_FULL_BLOCK, "חסימת תורנות מלאה בלבד"
     if bool(row.get("מעוניין בתורנות", False)):
-        return "V", "#d9ead3", "מעוניין בתורנות"
-    return "", "#ffffff", ""
+        return "V", COLOR_WANTS_DUTY, "מעוניין בתורנות"
+    return "", COLOR_AVAILABLE, ""
+
+
+def _legend_html() -> str:
+    return f"""
+    <div dir="rtl" style="margin:0.25rem 0 0.8rem 0;line-height:2.2;">
+      <b>מקרא:</b>
+      <span style="background:{COLOR_VACATION};border:1px solid #d95f5f;padding:4px 9px;border-radius:5px;margin:0 4px;"><b>XX</b> חופש</span>
+      <span style="background:{COLOR_HALF_BLOCK};border:1px solid #d9943e;padding:4px 9px;border-radius:5px;margin:0 4px;"><b>½X</b> חסימת חצי וגם מלאה</span>
+      <span style="background:{COLOR_FULL_BLOCK};border:1px solid #d5bd38;padding:4px 9px;border-radius:5px;margin:0 4px;"><b>X</b> חסימת מלאה בלבד</span>
+      <span style="background:{COLOR_WANTS_DUTY};border:1px solid #58a64a;padding:4px 9px;border-radius:5px;margin:0 4px;"><b>V</b> מעוניין בתורנות</span>
+      <span style="background:#ffffff;border:1px solid #bdbdbd;padding:4px 9px;border-radius:5px;margin:0 4px;">ריק - לא דווחה מגבלה או העדפה</span>
+    </div>
+    """
 
 
 def _render_preview(st, employee: str, edited, general_note: str) -> None:
     st.subheader("תצוגה לפני אישור")
-    st.markdown(
-        """
-        <div dir="rtl" style="margin: 0.25rem 0 0.8rem 0; line-height: 2;">
-          <b>מקרא:</b>
-          <span style="background:#f4cccc;border:1px solid #d8a0a0;padding:3px 8px;border-radius:4px;margin:0 4px;"><b>X</b> חופש</span>
-          <span style="background:#f9cb9c;border:1px solid #dfa96e;padding:3px 8px;border-radius:4px;margin:0 4px;"><b>½X</b> חסימת תורנות חצי וגם מלאה</span>
-          <span style="background:#fff2cc;border:1px solid #e0c979;padding:3px 8px;border-radius:4px;margin:0 4px;"><b>X</b> חסימת תורנות מלאה בלבד</span>
-          <span style="background:#d9ead3;border:1px solid #9fc392;padding:3px 8px;border-radius:4px;margin:0 4px;"><b>V</b> מעוניין בתורנות</span>
-          <span style="background:#ffffff;border:1px solid #cccccc;padding:3px 8px;border-radius:4px;margin:0 4px;">ריק - לא דווחה מגבלה או העדפה</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown(_legend_html(), unsafe_allow_html=True)
 
     header_cells = ["תאריך", "יום", "חג / יום מיוחד", employee]
     html_rows = [
         "<tr>"
         + "".join(
-            f'<th style="border:1px solid #cfcfcf;background:#e6ebf2;padding:7px;text-align:center;font-weight:700;">{html.escape(str(value))}</th>'
+            f'<th style="border:1px solid #cfcfcf;background:#dbe4f0;padding:7px;text-align:center;font-weight:700;">{html.escape(str(value))}</th>'
             for value in header_cells
         )
         + "</tr>"
@@ -185,7 +194,7 @@ def _render_preview(st, employee: str, edited, general_note: str) -> None:
             f'<td style="border:1px solid #dddddd;padding:6px;text-align:center;white-space:nowrap;">{html.escape(date_text)}</td>'
             f'<td style="border:1px solid #dddddd;padding:6px;text-align:center;">{html.escape(day_text)}</td>'
             f'<td style="border:1px solid #dddddd;padding:6px;text-align:center;">{html.escape(holiday_text)}</td>'
-            f'<td{title_attr} style="border:1px solid #dddddd;padding:6px;text-align:center;background:{background};font-weight:700;">{html.escape(symbol)}</td>'
+            f'<td{title_attr} style="border:1px solid #c9c9c9;padding:6px;text-align:center;background:{background};font-weight:800;">{html.escape(symbol)}</td>'
             "</tr>"
         )
 
