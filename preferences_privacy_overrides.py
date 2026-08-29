@@ -21,6 +21,7 @@ TTL_SECONDS = 12 * 60 * 60
 CLEAR_REQUEST_KEY = "preferences_private_clear_all_requested_v1"
 RESET_VERSION_KEY = "preferences_private_table_reset_version_v1"
 PENDING_BULK_KEY = "preferences_private_pending_bulk_v1"
+MASTER_STATE_KEY = "preferences_private_master_state_v1"
 CONTROL_ROW_LABEL = "כל החודש"
 BULK_COLUMNS = [
     "חופש",
@@ -90,6 +91,7 @@ def _clear_session_planning_data(st) -> None:
     st.session_state.pop("preferences_calendar_events", None)
     st.session_state.pop("preferences_loaded_calendar_labels", None)
     st.session_state.pop(PENDING_BULK_KEY, None)
+    st.session_state.pop(MASTER_STATE_KEY, None)
     for key in list(st.session_state.keys()):
         text = str(key)
         if text.startswith("preferences_table_"):
@@ -175,6 +177,9 @@ def install(app_module) -> None:
                     }
             return days
 
+        def _master_id(year, month, column: str) -> str:
+            return f"{year:04d}-{month:02d}:{column}"
+
         def private_data_editor(data, *args, **kwargs):
             nonlocal clear_button_rendered
 
@@ -211,12 +216,19 @@ def install(app_module) -> None:
                     table.at[idx, "מעוניין בתורנות"] = bool(day.get("wants_duty", False))
                     table.at[idx, "הערה אישית"] = str(day.get("personal_note", day.get("note", "")) or "")
 
+            master_state = st.session_state.get(MASTER_STATE_KEY)
+            if not isinstance(master_state, dict):
+                master_state = {}
+                st.session_state[MASTER_STATE_KEY] = master_state
+
             pending_bulk = st.session_state.pop(PENDING_BULK_KEY, None)
             if isinstance(pending_bulk, dict):
                 if pending_bulk.get("year") == year and pending_bulk.get("month") == month:
                     column = str(pending_bulk.get("column", ""))
                     if column in BULK_COLUMNS and column in table.columns:
-                        table.loc[real_mask, column] = bool(pending_bulk.get("value", False))
+                        target = bool(pending_bulk.get("value", False))
+                        table.loc[real_mask, column] = target
+                        master_state[_master_id(year, month, column)] = target
                         captured["year"] = year
                         captured["month"] = month
                         captured["days"] = _rows_to_days(table[real_mask])
@@ -225,9 +237,13 @@ def install(app_module) -> None:
             if control_mask is not None and bool(control_mask.any()):
                 control_index = table.index[control_mask][0]
                 for column in BULK_COLUMNS:
-                    if column in table.columns:
+                    if column not in table.columns:
+                        continue
+                    state_id = _master_id(year, month, column)
+                    if state_id not in master_state:
                         values = table.loc[real_mask, column].fillna(False).astype(bool)
-                        table.at[control_index, column] = bool(len(values) and values.all())
+                        master_state[state_id] = bool(len(values) and values.all())
+                    table.at[control_index, column] = bool(master_state.get(state_id, False))
 
             editor_kwargs = dict(kwargs)
             actual_key = f"{source_key}_reset_{reset_version}"
@@ -243,11 +259,13 @@ def install(app_module) -> None:
                     return
                 for column in BULK_COLUMNS:
                     if column in control_delta:
+                        target = bool(control_delta[column])
+                        master_state[_master_id(year, month, column)] = target
                         st.session_state[PENDING_BULK_KEY] = {
                             "year": year,
                             "month": month,
                             "column": column,
-                            "value": bool(control_delta[column]),
+                            "value": target,
                         }
                         st.session_state[RESET_VERSION_KEY] = reset_version + 1
                         break
@@ -271,12 +289,44 @@ def install(app_module) -> None:
             captured["days"] = days
             _write_browser_state(captured)
 
+            # If the user edited an individual day, only update the visual
+            # master state. Never turn that automatic master-state change into
+            # a bulk command.
+            state = st.session_state.get(actual_key, {})
+            edited_rows = state.get("edited_rows", {}) if isinstance(state, dict) else {}
+            real_row_changed = False
+            changed_bulk_columns = set()
+            for row_index, delta in edited_rows.items():
+                try:
+                    row_number = int(row_index)
+                except (TypeError, ValueError):
+                    continue
+                if row_number == 0 or not isinstance(delta, dict):
+                    continue
+                for column in BULK_COLUMNS:
+                    if column in delta:
+                        changed_bulk_columns.add(column)
+                        real_row_changed = True
+
+            if real_row_changed:
+                master_changed = False
+                for column in changed_bulk_columns:
+                    values = edited.loc[edited_real_mask, column].fillna(False).astype(bool)
+                    derived = bool(len(values) and values.all())
+                    state_id = _master_id(year, month, column)
+                    if bool(master_state.get(state_id, False)) != derived:
+                        master_state[state_id] = derived
+                        master_changed = True
+                if master_changed:
+                    st.session_state[RESET_VERSION_KEY] = reset_version + 1
+                    st.rerun()
+
             if not clear_button_rendered:
                 clear_button_rendered = True
                 if st.button(
                     "נקה את כל הטבלה",
                     width="stretch",
-                    key=f"clear_all_preferences_table_{year}_{month}_v8",
+                    key=f"clear_all_preferences_table_{year}_{month}_v9",
                 ):
                     _clear_browser_planning_data()
                     st.session_state[RESET_VERSION_KEY] = reset_version + 1
