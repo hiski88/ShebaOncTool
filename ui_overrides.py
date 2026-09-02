@@ -76,8 +76,6 @@ def install(app_module) -> None:
             text-align: right !important;
         }
 
-        /* BaseWeb renders opened select menus in a portal outside the widget.
-           Force the popup list itself to RTL/right alignment as well. */
         [role="listbox"],
         [role="listbox"] *,
         [role="option"],
@@ -99,8 +97,6 @@ def install(app_module) -> None:
             text-align: right !important;
         }
 
-        /* Keep the time widget itself RTL/right-aligned. Only the numeric clock
-           value is LTR so 08:00 is not visually reversed. */
         [data-testid="stTimeInput"],
         [data-testid="stTimeInput"] > div,
         [data-testid="stTimeInput"] label,
@@ -135,11 +131,27 @@ def install(app_module) -> None:
             text-align: right !important;
         }
 
+        /* The sidebar already has a clear title. Hide the redundant radio label. */
+        section[data-testid="stSidebar"] [data-testid="stRadio"] > label,
+        section[data-testid="stSidebar"] [data-testid="stRadio"] [data-testid="stWidgetLabel"] {
+            display: none !important;
+        }
+
         section[data-testid="stSidebar"] [role="radiogroup"] label,
         section[data-testid="stSidebar"] [role="radiogroup"] label > div {
             direction: rtl !important;
             text-align: right !important;
             justify-content: flex-start !important;
+        }
+
+        /* When Streamlit collapses the sidebar, hide its content completely.
+           Keep only Streamlit's own expand control visible so labels do not
+           wrap vertically inside the narrow collapsed rail. */
+        section[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarContent"],
+        section[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarUserContent"] {
+            visibility: hidden !important;
+            overflow: hidden !important;
+            pointer-events: none !important;
         }
 
         @media (min-width: 769px) {
@@ -154,19 +166,39 @@ def install(app_module) -> None:
                 border-right: 0 !important;
             }
 
+            section[data-testid="stSidebar"][aria-expanded="true"] ~ [data-testid="stAppViewContainer"] > .main,
+            section[data-testid="stSidebar"][aria-expanded="true"] ~ [data-testid="stAppViewContainer"] [data-testid="stMain"],
             [data-testid="stAppViewContainer"] > .main,
             [data-testid="stMain"] {
                 margin-left: 0 !important;
-                margin-right: 0 !important;
-                width: calc(100% - 21rem) !important;
                 max-width: none !important;
                 position: relative !important;
+            }
+
+            section[data-testid="stSidebar"][aria-expanded="true"] ~ [data-testid="stAppViewContainer"] > .main,
+            section[data-testid="stSidebar"][aria-expanded="true"] ~ [data-testid="stAppViewContainer"] [data-testid="stMain"] {
+                margin-right: 0 !important;
+                width: calc(100% - 21rem) !important;
                 left: -21rem !important;
+            }
+
+            section[data-testid="stSidebar"][aria-expanded="false"] ~ [data-testid="stAppViewContainer"] > .main,
+            section[data-testid="stSidebar"][aria-expanded="false"] ~ [data-testid="stAppViewContainer"] [data-testid="stMain"] {
+                width: 100% !important;
+                left: 0 !important;
+                margin-right: 0 !important;
             }
 
             header[data-testid="stHeader"] {
                 left: 0 !important;
+            }
+
+            section[data-testid="stSidebar"][aria-expanded="true"] ~ [data-testid="stAppViewContainer"] header[data-testid="stHeader"] {
                 right: 21rem !important;
+            }
+
+            section[data-testid="stSidebar"][aria-expanded="false"] ~ [data-testid="stAppViewContainer"] header[data-testid="stHeader"] {
+                right: 0 !important;
             }
         }
 
