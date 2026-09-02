@@ -131,7 +131,6 @@ def install(app_module) -> None:
             text-align: right !important;
         }
 
-        /* The sidebar already has a clear title. Hide the redundant radio label. */
         section[data-testid="stSidebar"] [data-testid="stRadio"] > label,
         section[data-testid="stSidebar"] [data-testid="stRadio"] [data-testid="stWidgetLabel"] {
             display: none !important;
@@ -144,62 +143,11 @@ def install(app_module) -> None:
             justify-content: flex-start !important;
         }
 
-        /* When Streamlit collapses the sidebar, hide its content completely.
-           Keep only Streamlit's own expand control visible so labels do not
-           wrap vertically inside the narrow collapsed rail. */
+        /* Do not override sidebar position, width, transform or z-index.
+           Streamlit owns the open/collapse animation and main-content resize. */
         section[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarContent"],
         section[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarUserContent"] {
-            visibility: hidden !important;
             overflow: hidden !important;
-            pointer-events: none !important;
-        }
-
-        @media (min-width: 769px) {
-            section[data-testid="stSidebar"] {
-                position: fixed !important;
-                top: 0 !important;
-                right: 0 !important;
-                left: auto !important;
-                height: 100vh !important;
-                z-index: 999 !important;
-                border-left: 1px solid rgba(49, 51, 63, 0.12) !important;
-                border-right: 0 !important;
-            }
-
-            section[data-testid="stSidebar"][aria-expanded="true"] ~ [data-testid="stAppViewContainer"] > .main,
-            section[data-testid="stSidebar"][aria-expanded="true"] ~ [data-testid="stAppViewContainer"] [data-testid="stMain"],
-            [data-testid="stAppViewContainer"] > .main,
-            [data-testid="stMain"] {
-                margin-left: 0 !important;
-                max-width: none !important;
-                position: relative !important;
-            }
-
-            section[data-testid="stSidebar"][aria-expanded="true"] ~ [data-testid="stAppViewContainer"] > .main,
-            section[data-testid="stSidebar"][aria-expanded="true"] ~ [data-testid="stAppViewContainer"] [data-testid="stMain"] {
-                margin-right: 0 !important;
-                width: calc(100% - 21rem) !important;
-                left: -21rem !important;
-            }
-
-            section[data-testid="stSidebar"][aria-expanded="false"] ~ [data-testid="stAppViewContainer"] > .main,
-            section[data-testid="stSidebar"][aria-expanded="false"] ~ [data-testid="stAppViewContainer"] [data-testid="stMain"] {
-                width: 100% !important;
-                left: 0 !important;
-                margin-right: 0 !important;
-            }
-
-            header[data-testid="stHeader"] {
-                left: 0 !important;
-            }
-
-            section[data-testid="stSidebar"][aria-expanded="true"] ~ [data-testid="stAppViewContainer"] header[data-testid="stHeader"] {
-                right: 21rem !important;
-            }
-
-            section[data-testid="stSidebar"][aria-expanded="false"] ~ [data-testid="stAppViewContainer"] header[data-testid="stHeader"] {
-                right: 0 !important;
-            }
         }
 
         div[data-testid="stDataFrame"],
