@@ -11,6 +11,7 @@ from calendar_time_overrides import install as install_calendar_time_overrides
 from google_calendar import handle_oauth_callback
 from preferences_output_overrides import install as install_preferences_output_overrides
 from preferences_privacy_overrides import install as install_preferences_privacy_overrides
+from schedule_layout_overrides import install as install_schedule_layout_overrides
 from tool1_preferences_mvp_overrides import install as install_tool1_preferences_mvp_overrides
 from tool2_submissions_overrides import install as install_tool2_submissions_overrides
 from tool3_minimal_overrides import install as install_tool3_minimal_overrides
@@ -40,6 +41,9 @@ install_tool1_preferences_mvp_overrides(app_v2)
 install_preferences_output_overrides(app_v2)
 install_preferences_privacy_overrides(app_v2)
 install_tool2_submissions_overrides(app_v2)
+# Tool 3 must understand both the legacy schedule layout and the newer layout
+# with a holiday/special-day column before it infers names or parses duties.
+install_schedule_layout_overrides(app_v2)
 install_tool3_minimal_overrides(app_v2)
 install_calendar_time_overrides(app_v2)
 app_v2.main()
