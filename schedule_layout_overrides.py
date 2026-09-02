@@ -53,8 +53,6 @@ def _looks_like_holiday_text(value: object) -> bool:
 
 def _modern_layout_from_structure(sheet) -> bool:
     """Detect the newer layout even when column C has no recognizable header."""
-    # Strong header evidence in the first rows. These are zero-based columns in
-    # the newer file: V=21, W=22, X=23.
     expected_headers = {
         21: ("ת. א.יום", "תורנות אשפוז יום", "תורן אשפוז יום"),
         22: ("תורן מיון", "תורנות מיון"),
@@ -66,9 +64,6 @@ def _modern_layout_from_structure(sheet) -> bool:
             if any(term in text for term in terms):
                 return True
 
-    # Column C is the holiday/special-day column in the newer layout. Some
-    # source files leave its header blank, but the holiday values themselves
-    # are enough to identify the layout safely.
     for row in range(sheet.nrows):
         if _looks_like_holiday_text(_cell_text(sheet, row, 2)):
             return True
@@ -76,19 +71,72 @@ def _modern_layout_from_structure(sheet) -> bool:
     return False
 
 
+def _clean_candidate(fragment: str) -> str:
+    fragment = fragment.strip(" \t\n,;:|()[]{}")
+    return normalize_spaces(fragment)
+
+
+def _infer_names_from_assignment_columns(workbook, config, modern: bool) -> list[str]:
+    """Infer staff only from assignment columns, never from status/absence text.
+
+    A status column can reference an already-known employee later during parsing,
+    but free text such as institutions, courses or absence reasons must not create
+    new people in the employee selector.
+    """
+    sheet = workbook.sheet_by_preference(config.get("schedule", {}).get("sheet_names", []))
+    excluded = {normalize_spaces(term).casefold() for term in config.get("non_name_terms", [])}
+    counts: dict[str, int] = {}
+    duty_names: set[str] = set()
+
+    rows = schedule_parser.schedule_rows(sheet, config)
+    for column in config.get("schedule", {}).get("columns", []):
+        if column.get("kind") == "status":
+            continue
+
+        col = schedule_parser._effective_column(int(column["index"]), modern)
+        if col >= sheet.ncols:
+            continue
+
+        for row, _ in rows:
+            text = sheet.cell(row, col).text
+            if not text:
+                continue
+            for fragment in re.split(r"[\n,;]+", text):
+                candidate = _clean_candidate(fragment)
+                folded = candidate.casefold()
+                if not candidate or folded in excluded:
+                    continue
+                if any(term and term in folded for term in excluded):
+                    continue
+                if any(char.isdigit() for char in candidate):
+                    continue
+                if "/" in candidate or "+" in candidate:
+                    continue
+                if len(candidate) < 2 or len(candidate) > 35:
+                    continue
+                if len(candidate.split()) > 4:
+                    continue
+                if not re.fullmatch(r"[א-תA-Za-zÀ-ÖØ-öø-ÿ'׳״\- ]+", candidate):
+                    continue
+
+                counts[candidate] = counts.get(candidate, 0) + 1
+                if column.get("kind") == "duty":
+                    duty_names.add(candidate)
+
+    names = [name for name, count in counts.items() if count >= 2 or name in duty_names]
+    return sorted(names, key=lambda item: (item.casefold(), item))
+
+
 def install(app_module) -> None:
     if getattr(app_module, "_schedule_layout_override_installed", False):
         return
 
     original_layout_detector = schedule_parser._has_modern_holiday_column
-    original_infer_names = app_module.infer_employee_names
 
     def robust_layout_detector(sheet) -> bool:
         if original_layout_detector(sheet):
             return True
 
-        # Accept additional natural header variants before falling back to
-        # structural/content detection.
         for row in range(min(sheet.nrows, 25)):
             text = _cell_text(sheet, row, 2)
             if any(term in text for term in ("חג", "יום מיוחד", "מועד")):
@@ -96,11 +144,12 @@ def install(app_module) -> None:
         return _modern_layout_from_structure(sheet)
 
     def infer_employee_names_filtered(workbook, config):
-        names = list(original_infer_names(workbook, config))
         sheet = workbook.sheet_by_preference(config.get("schedule", {}).get("sheet_names", []))
+        modern = robust_layout_detector(sheet)
+        names = _infer_names_from_assignment_columns(workbook, config, modern)
 
         holiday_values: set[str] = set()
-        if robust_layout_detector(sheet):
+        if modern:
             for row in range(sheet.nrows):
                 text = _cell_text(sheet, row, 2)
                 if not text:
@@ -119,5 +168,6 @@ def install(app_module) -> None:
         ]
 
     schedule_parser._has_modern_holiday_column = robust_layout_detector
+    schedule_parser.infer_employee_names = infer_employee_names_filtered
     app_module.infer_employee_names = infer_employee_names_filtered
     app_module._schedule_layout_override_installed = True
