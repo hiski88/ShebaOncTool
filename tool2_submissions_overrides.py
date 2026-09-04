@@ -61,9 +61,6 @@ def install(app_module) -> None:
 
         st.markdown(LEGEND_HTML, unsafe_allow_html=True)
 
-        # Keep the same submission-selection behavior as before, but expose only
-        # operational metadata in the planner UI. Sensitive preference details
-        # remain in memory and are used only when the planner creates the sheet.
         display_rows = []
         seen = Counter()
         for submission_index, item in enumerate(submissions):
@@ -140,7 +137,11 @@ def install(app_module) -> None:
                     }
                 )
             try:
-                month_table = app_module.build_month_table(year, month)
+                month_table = app_module.build_month_table(
+                    year,
+                    month,
+                    special_days=app_module.CONFIG.get("special_days", {}),
+                )
                 title = create_planning_sheet(
                     st,
                     year,
