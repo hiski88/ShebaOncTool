@@ -61,9 +61,12 @@ def install(app_module) -> None:
 
         st.markdown(LEGEND_HTML, unsafe_allow_html=True)
 
+        # Keep the same submission-selection behavior as before, but expose only
+        # operational metadata in the planner UI. Sensitive preference details
+        # remain in memory and are used only when the planner creates the sheet.
         display_rows = []
         seen = Counter()
-        for item in submissions:
+        for submission_index, item in enumerate(submissions):
             name = item["שם עובד"]
             seen[name] += 1
             count = counts[name]
@@ -74,17 +77,10 @@ def install(app_module) -> None:
                 if is_newest_for_name:
                     duplicate_status += " - החדשה ביותר"
 
-            # Streamlit's grid lays physical columns left-to-right even inside
-            # the RTL app. Store them in reverse physical order so the visual
-            # reading order from the right starts with the manual include flag.
             display_rows.append(
                 {
+                    "_submission_index": submission_index,
                     "כפילות": duplicate_status,
-                    "הערה כללית": item["הערה כללית"],
-                    "מעוניין בתורנות": item["מעוניין בתורנות"],
-                    "חופשים": item["חופשים"],
-                    "חסימת תורנות חצי": item["חסימת תורנות חצי"],
-                    "חסימת תורנות מלאה": item["חסימת תורנות מלאה"],
                     "שם עובד": name,
                     "זמן הגשה": item["זמן הגשה"],
                     "לכלול בתכנון": is_newest_for_name,
@@ -92,22 +88,14 @@ def install(app_module) -> None:
             )
 
         st.subheader("בחירת הגשות לתכנון")
-        readonly_columns = [
-            "זמן הגשה",
-            "שם עובד",
-            "חסימת תורנות מלאה",
-            "חסימת תורנות חצי",
-            "חופשים",
-            "מעוניין בתורנות",
-            "הערה כללית",
-            "כפילות",
-        ]
         selected_table = st.data_editor(
             pd.DataFrame(display_rows),
             width="stretch",
             hide_index=True,
-            disabled=readonly_columns,
+            disabled=["זמן הגשה", "שם עובד", "כפילות"],
+            column_order=["לכלול בתכנון", "זמן הגשה", "שם עובד", "כפילות"],
             column_config={
+                "_submission_index": None,
                 "לכלול בתכנון": st.column_config.CheckboxColumn("לכלול בתכנון"),
             },
             key=f"manager_submission_selection_{year}_{month}",
@@ -138,17 +126,19 @@ def install(app_module) -> None:
             disabled=not can_create,
             key=f"create_planning_sheet_{year}_{month}",
         ):
-            selected_submissions = [
-                {
-                    "שם עובד": str(row.get("שם עובד", "") or "").strip(),
-                    "חסימת תורנות מלאה": str(row.get("חסימת תורנות מלאה", "") or "").strip(),
-                    "חסימת תורנות חצי": str(row.get("חסימת תורנות חצי", "") or "").strip(),
-                    "חופשים": str(row.get("חופשים", "") or "").strip(),
-                    "מעוניין בתורנות": str(row.get("מעוניין בתורנות", "") or "").strip(),
-                    "הערה כללית": str(row.get("הערה כללית", "") or "").strip(),
-                }
-                for _, row in selected_rows.iterrows()
-            ]
+            selected_submissions = []
+            for _, row in selected_rows.iterrows():
+                source = submissions[int(row["_submission_index"])]
+                selected_submissions.append(
+                    {
+                        "שם עובד": str(source.get("שם עובד", "") or "").strip(),
+                        "חסימת תורנות מלאה": str(source.get("חסימת תורנות מלאה", "") or "").strip(),
+                        "חסימת תורנות חצי": str(source.get("חסימת תורנות חצי", "") or "").strip(),
+                        "חופשים": str(source.get("חופשים", "") or "").strip(),
+                        "מעוניין בתורנות": str(source.get("מעוניין בתורנות", "") or "").strip(),
+                        "הערה כללית": str(source.get("הערה כללית", "") or "").strip(),
+                    }
+                )
             try:
                 month_table = app_module.build_month_table(year, month)
                 title = create_planning_sheet(
