@@ -180,6 +180,25 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
                     "range": {
                         "sheetId": sheet_id,
                         "startRowIndex": 0,
+                        "endRowIndex": len(month_rows) + 3,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": total_columns,
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "horizontalAlignment": "CENTER",
+                            "verticalAlignment": "MIDDLE",
+                            "textDirection": "RIGHT_TO_LEFT",
+                        }
+                    },
+                    "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment,textDirection)",
+                }
+            },
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": 0,
                         "endRowIndex": 1,
                         "startColumnIndex": 0,
                         "endColumnIndex": 1,
@@ -226,11 +245,13 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
                     "cell": {
                         "userEnteredFormat": {
                             "backgroundColor": {"red": 0.96, "green": 0.96, "blue": 0.96},
-                            "verticalAlignment": "TOP",
+                            "horizontalAlignment": "CENTER",
+                            "verticalAlignment": "MIDDLE",
                             "wrapStrategy": "WRAP",
+                            "textDirection": "RIGHT_TO_LEFT",
                         }
                     },
-                    "fields": "userEnteredFormat(backgroundColor,verticalAlignment,wrapStrategy)",
+                    "fields": "userEnteredFormat(backgroundColor,horizontalAlignment,verticalAlignment,wrapStrategy,textDirection)",
                 }
             },
             {
