@@ -46,7 +46,8 @@ def install(app_module) -> None:
 
         events_by_date = app_module.render_calendar_reader(year, month)
 
-        table = app_module.build_month_table(year, month)
+        special_days = app_module.CONFIG.get("special_days", {})
+        table = app_module.build_month_table(year, month, special_days=special_days)
         table["אירועים מהיומן"] = table["תאריך"].map(
             lambda value: "\n".join(events_by_date.get(app_module.pd.Timestamp(value).date().isoformat(), []))
         )
