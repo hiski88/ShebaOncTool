@@ -301,7 +301,7 @@ def _colored_cell_request(sheet_id: int, row_index: int, column_index: int, colo
 
 
 def create_planning_sheet(st, year: int, month: int, month_rows, selected_submissions: list[dict[str, str]]) -> str:
-    """Create a new versioned RTL monthly planning tab with a visible legend and colored preference states."""
+    """Create a new versioned RTL monthly planning tab with planner duty columns and colored preference states."""
     if not selected_submissions:
         raise RuntimeError("לא נבחרו הגשות לתכנון.")
 
@@ -317,8 +317,9 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
     if not employees:
         raise RuntimeError("לא נמצאו שמות עובדים בהגשות שנבחרו.")
 
-    headers = ["תאריך", "יום", "חג / יום מיוחד", *employees]
-    total_columns = max(len(headers), 5)
+    planner_headers = ["תורן מחלקה", "תורן א.יום", "תורן מיון"]
+    headers = ["תאריך", "יום", "חג / יום מיוחד", *planner_headers, *employees]
+    total_columns = max(len(headers), 8)
 
     add_result = service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,
@@ -369,7 +370,7 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
     note_requests: list[dict] = []
 
     # Header notes carry general employee notes without cluttering the grid.
-    for employee_col, employee in enumerate(employee_data, start=3):
+    for employee_col, employee in enumerate(employee_data, start=6):
         if employee["general_note"]:
             note_requests.append(
                 {
@@ -401,9 +402,12 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
             date_text,
             str(row.get("יום", "") or ""),
             str(row.get("חג / יום מיוחד", "") or ""),
+            "",
+            "",
+            "",
         ]
 
-        for employee_col, employee in enumerate(employee_data, start=3):
+        for employee_col, employee in enumerate(employee_data, start=6):
             status = _day_status(day, employee)
             if status is None:
                 output_row.append("")
