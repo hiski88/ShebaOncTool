@@ -13,7 +13,7 @@ import calendar
 import re
 from datetime import date, timedelta
 from functools import lru_cache
-from typing import Iterable, Mapping
+from typing import Mapping
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
@@ -54,15 +54,22 @@ GOOGLE_WHITELIST: tuple[tuple[tuple[str, ...], str], ...] = (
     (("holocaust remembrance", "yom hashoah"), "יום הזיכרון לשואה ולגבורה"),
     (("memorial day", "yom hazikaron"), "יום הזיכרון לחללי מערכות ישראל ונפגעי פעולות האיבה"),
     (("independence day", "yom haatzmaut", "yom ha'atzmaut"), "יום העצמאות"),
+    (("election day", "knesset election"), "יום הבחירות לכנסת"),
     (("sigd",), "סיגד"),
-    (("ramadan",), "תחילת רמדאן"),
+    (("ramadan start", "first day of ramadan", "ramadan begins"), "תחילת רמדאן"),
+    (("eve of eid al-fitr", "eid al-fitr eve", "eve of eid ul-fitr"), "ערב עיד אל-פיטר"),
     (("eid al-fitr", "eid ul-fitr"), "עיד אל-פיטר"),
+    (("eve of eid al-adha", "eid al-adha eve", "eve of eid ul-adha"), "ערב עיד אל-אדחא / חג הקורבן"),
     (("eid al-adha", "eid ul-adha"), "עיד אל-אדחא / חג הקורבן"),
     (("islamic new year", "muharram"), "ראש השנה ההיג'רית"),
     (("prophet's birthday", "mawlid", "milad un nabi"), "יום הולדת הנביא מוחמד"),
+    (("armenian christmas",), "חג המולד - ארמני"),
+    (("orthodox christmas",), "חג המולד - אורתודוקסי"),
     (("christmas eve",), "ערב חג המולד"),
     (("christmas day", "christmas"), "חג המולד"),
+    (("orthodox good friday",), "יום שישי הטוב - אורתודוקסי"),
     (("good friday",), "יום שישי הטוב"),
+    (("orthodox easter",), "פסחא - אורתודוקסי"),
     (("easter",), "פסחא"),
     (("annunciation",), "חג הבשורה"),
     (("nabi shu", "prophet shu", "shuaib", "shu'ayb"), "חג הנביא שועייב"),
@@ -145,7 +152,7 @@ def _google_events(calendar_id: str, year: int) -> tuple[tuple[date, str], ...]:
     """Fetch one public Google holiday calendar. Failure is non-fatal."""
     try:
         request = Request(_google_url(calendar_id), headers={"User-Agent": "MedStaff/1.0"})
-        with urlopen(request, timeout=4) as response:  # nosec - fixed Google host
+        with urlopen(request, timeout=3) as response:  # nosec - fixed Google host
             payload = response.read().decode("utf-8", errors="replace")
         return tuple(_parse_google_ics(payload, year))
     except Exception:
@@ -233,10 +240,17 @@ def _local_fallback_labels(year: int) -> dict[date, list[str]]:
     return result
 
 
-def _merge_source_days(year: int) -> dict[date, list[str]]:
+@lru_cache(maxsize=16)
+def _merge_source_days(year: int) -> Mapping[date, tuple[str, ...]]:
     result = _local_fallback_labels(year)
     for when, labels in _google_special_days(year).items():
         for label in labels:
+            # Local calculation gives more precise labels for Hol Hamoed / final festival days.
+            existing = result.get(when, [])
+            if label == "סוכות" and any("חול המועד סוכות" in item or "הושענא רבה" in item for item in existing):
+                continue
+            if label == "פסח" and any("חול המועד פסח" in item or "שביעי של פסח" in item for item in existing):
+                continue
             _add_label(result, when, label)
 
     # Family/social/medical awareness rules requested for the planning context.
@@ -252,7 +266,7 @@ def _merge_source_days(year: int) -> dict[date, list[str]]:
     _add_label(result, start, "תחילת שנת הלימודים")
     _add_label(result, date(year, 6, 20), "סיום שנת הלימודים - על יסודי")
     _add_label(result, date(year, 6, 30), "סיום שנת הלימודים - גנים ויסודי")
-    return result
+    return {key: tuple(values) for key, values in result.items()}
 
 
 def _config_overrides(config: Mapping | None) -> Mapping[str, str]:
@@ -263,10 +277,10 @@ def _config_overrides(config: Mapping | None) -> Mapping[str, str]:
 
 
 def special_day_name(value: date, config: Mapping | None = None) -> str:
-    labels = list(_merge_source_days(value.year).get(value, []))
+    labels = list(_merge_source_days(value.year).get(value, ()))
     override = str(_config_overrides(config).get(value.isoformat(), "") or "").strip()
     if override:
-        # Prefix '-' removes a generated label/date; otherwise override/add explicit context.
+        # A single '-' suppresses generated labels for an exceptional date.
         if override == "-":
             labels = []
         else:
