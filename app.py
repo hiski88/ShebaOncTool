@@ -12,6 +12,7 @@ from google_calendar import handle_oauth_callback
 from preferences_output_overrides import install as install_preferences_output_overrides
 from preferences_privacy_overrides import install as install_preferences_privacy_overrides
 from schedule_layout_overrides import install as install_schedule_layout_overrides
+from special_days_engine import install as install_special_days_engine
 from tool1_preferences_mvp_overrides import install as install_tool1_preferences_mvp_overrides
 from tool2_submissions_overrides import install as install_tool2_submissions_overrides
 from tool3_minimal_overrides import install as install_tool3_minimal_overrides
@@ -35,6 +36,9 @@ def _calendar_reader(year: int, month: int):
 
 app_v2.render_calendar_reader = _calendar_reader
 install_ui_overrides(app_v2)
+# One central source/filter engine must be installed before Tools 1/2/3 so all
+# of them see the same holiday / special-day labels.
+install_special_days_engine(app_v2)
 # Install the expanded Tool 1 editor first. Output and private-persistence
 # wrappers then capture the new fields without changing the underlying model.
 install_tool1_preferences_mvp_overrides(app_v2)
