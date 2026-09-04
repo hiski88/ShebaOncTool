@@ -17,6 +17,14 @@ from google_sheets_submissions import (
 PLANNER_HEADERS = ["תורן מחלקה", "תורן א.יום", "תורן מיון"]
 
 
+def _employee_sort_key(item: dict) -> tuple[int, str]:
+    """Sort Hebrew names א-ת first, then Latin names A-Z."""
+    name = str(item.get("name", "") or "").strip()
+    first_alpha = next((char for char in name if char.isalpha()), "")
+    is_hebrew = bool(first_alpha and "א" <= first_alpha <= "ת")
+    return (0 if is_hebrew else 1, name.casefold())
+
+
 def create_planning_sheet(st, year: int, month: int, month_rows, selected_submissions: list[dict[str, str]]) -> str:
     """Create a versioned RTL monthly planning tab with planner fields and visible employee notes."""
     if not selected_submissions:
@@ -48,6 +56,7 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
     if not employee_data:
         raise RuntimeError("לא נמצאו שמות עובדים בהגשות שנבחרו.")
 
+    employee_data.sort(key=_employee_sort_key)
     employees = [item["name"] for item in employee_data]
     headers = ["תאריך", "יום", "חג / יום מיוחד", *PLANNER_HEADERS, *employees]
     total_columns = len(headers)
@@ -65,7 +74,7 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
                                 "rowCount": max(44, len(month_rows) + 8),
                                 "columnCount": max(12, total_columns + 2),
                                 "frozenRowCount": 3,
-                                "frozenColumnCount": 3,
+                                "frozenColumnCount": 6,
                             },
                         }
                     }
