@@ -13,7 +13,7 @@ from google_sheets_submissions import (
     _service,
 )
 
-PLANNER_HEADERS = ["תורן מחלקה", "תורן א.יום", "תורן מיון"]
+PLANNER_HEADERS = ["תורן מחלקה", "תורן א.יום", "תורן מיון", "בחופש"]
 
 
 def _employee_sort_key(item: dict) -> tuple[int, str]:
@@ -73,7 +73,7 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
                                 "rowCount": max(44, len(month_rows) + 8),
                                 "columnCount": max(12, total_columns + 2),
                                 "frozenRowCount": 3,
-                                "frozenColumnCount": 6,
+                                "frozenColumnCount": 7,
                             },
                         }
                     }
@@ -90,13 +90,13 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
         "X = חסימת מלאה בלבד",
         "V = מעוניין בתורנות",
     ]
-    notes_row = ["הערות", "", "", "", "", "", *[item["general_note"] for item in employee_data]]
+    notes_row = ["הערות", "", "", "", "", "", "", *[item["general_note"] for item in employee_data]]
     values = [legend_row, headers, notes_row]
 
     format_requests: list[dict] = []
     note_requests: list[dict] = []
 
-    for employee_col, employee in enumerate(employee_data, start=6):
+    for employee_col, employee in enumerate(employee_data, start=7):
         if employee["general_note"]:
             note_requests.append(
                 {
@@ -131,9 +131,10 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
             "",
             "",
             "",
+            "",
         ]
 
-        for employee_col, employee in enumerate(employee_data, start=6):
+        for employee_col, employee in enumerate(employee_data, start=7):
             status = _day_status(day, employee)
             if status is None:
                 output_row.append("")
