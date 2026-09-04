@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 
 import schedule_parser
-from core import normalize_spaces
+from core import important_day_name as core_important_day_name, normalize_spaces
 
 
 _HOLIDAY_LABELS = {
@@ -77,12 +77,7 @@ def _clean_candidate(fragment: str) -> str:
 
 
 def _infer_names_from_assignment_columns(workbook, config, modern: bool) -> list[str]:
-    """Infer staff only from assignment columns, never from status/absence text.
-
-    A status column can reference an already-known employee later during parsing,
-    but free text such as institutions, courses or absence reasons must not create
-    new people in the employee selector.
-    """
+    """Infer staff only from assignment columns, never from status/absence text."""
     sheet = workbook.sheet_by_preference(config.get("schedule", {}).get("sheet_names", []))
     excluded = {normalize_spaces(term).casefold() for term in config.get("non_name_terms", [])}
     counts: dict[str, int] = {}
@@ -167,7 +162,14 @@ def install(app_module) -> None:
             if _fold(name) not in holiday_values and _fold(name) not in fixed_holidays
         ]
 
+    def configured_important_day_name(value, special_days=None):
+        merged = dict(app_module.CONFIG.get("special_days", {}) or {})
+        if special_days:
+            merged.update(dict(special_days))
+        return core_important_day_name(value, merged)
+
     schedule_parser._has_modern_holiday_column = robust_layout_detector
     schedule_parser.infer_employee_names = infer_employee_names_filtered
+    schedule_parser.important_day_name = configured_important_day_name
     app_module.infer_employee_names = infer_employee_names_filtered
     app_module._schedule_layout_override_installed = True
