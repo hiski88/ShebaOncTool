@@ -5,7 +5,8 @@ from collections import Counter
 
 import pandas as pd
 
-from google_sheets_submissions import configured, create_planning_sheet, read_submissions
+from google_sheets_submissions import configured, read_submissions
+from planning_sheet_v2 import create_planning_sheet
 
 
 LEGEND_HTML = """
