@@ -13,7 +13,6 @@ from google_sheets_submissions import (
     _service,
 )
 
-
 PLANNER_HEADERS = ["תורן מחלקה", "תורן א.יום", "תורן מיון"]
 
 
@@ -231,24 +230,6 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
                         }
                     },
                     "fields": "userEnteredFormat(backgroundColor,verticalAlignment,wrapStrategy)",
-                }
-            },
-            {
-                "repeatCell": {
-                    "range": {
-                        "sheetId": sheet_id,
-                        "startRowIndex": 1,
-                        "endRowIndex": len(month_rows) + 3,
-                        "startColumnIndex": 3,
-                        "endColumnIndex": 6,
-                    },
-                    "cell": {
-                        "userEnteredFormat": {
-                            "backgroundColor": {"red": 0.93, "green": 0.96, "blue": 1.0},
-                            "horizontalAlignment": "CENTER",
-                        }
-                    },
-                    "fields": "userEnteredFormat(backgroundColor,horizontalAlignment)",
                 }
             },
             {
