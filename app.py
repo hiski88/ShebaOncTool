@@ -16,6 +16,7 @@ from special_days_engine import install as install_special_days_engine
 from tool1_preferences_mvp_overrides import install as install_tool1_preferences_mvp_overrides
 from tool2_submissions_overrides import install as install_tool2_submissions_overrides
 from tool3_minimal_overrides import install as install_tool3_minimal_overrides
+from tool_navigation_v2 import install as install_tool_navigation_v2
 from ui_overrides import install as install_ui_overrides
 
 
@@ -45,9 +46,13 @@ install_tool1_preferences_mvp_overrides(app_v2)
 install_preferences_output_overrides(app_v2)
 install_preferences_privacy_overrides(app_v2)
 install_tool2_submissions_overrides(app_v2)
-# Tool 3 must understand both the legacy schedule layout and the newer layout
-# with a holiday/special-day column before it infers names or parses duties.
+# The calendar tool must understand both the legacy schedule layout and the
+# newer layout with a holiday/special-day column before it infers names or
+# parses duties.
 install_schedule_layout_overrides(app_v2)
 install_tool3_minimal_overrides(app_v2)
 install_calendar_time_overrides(app_v2)
+# Install navigation last so it captures the fully configured Tool 2 and
+# calendar implementations and exposes them under the new five-tool flow.
+install_tool_navigation_v2(app_v2)
 app_v2.main()
