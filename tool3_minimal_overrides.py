@@ -1,8 +1,8 @@
-"""Minimal employee-facing flow for tool 3.
+"""Minimal employee-facing calendar export flow.
 
-Tool 3 is intentionally limited to reading the final roster, selecting the
-employee's important events, and downloading an ICS file. Staffing validation
-and direct Google Calendar writes belong outside this personal export flow.
+This tool reads a final roster, lets an employee select relevant events, and
+downloads an ICS file. In a later stage it will read the centrally stored final
+schedule instead of requiring each employee to upload the source file.
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ def install(app_module) -> None:
     def tool_calendar_minimal() -> None:
         st = app_module.st
         app_module.render_header(
-            "3. לוז סופי ושמירה ביומן",
+            "4. יצירת זימונים ליומן",
             "מעלים את הלוז הסופי, בוחרים עובד/ת ומורידים קובץ ICS עם תורנויות ואירועים חשובים בלבד.",
         )
 
