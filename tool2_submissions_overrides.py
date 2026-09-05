@@ -125,7 +125,9 @@ def install(app_module) -> None:
             width="stretch",
             hide_index=True,
             disabled=["זמן הגשה", "שם עובד", "כפילות"],
-            column_order=["לכלול בתכנון", "זמן הגשה", "שם עובד", "כפילות"],
+            # The app-wide RTL grid styling reverses the visual order, so this
+            # source order intentionally restores the desired right-to-left view.
+            column_order=["כפילות", "שם עובד", "זמן הגשה", "לכלול בתכנון"],
             column_config={
                 "_submission_index": None,
                 "לכלול בתכנון": st.column_config.CheckboxColumn("לכלול בתכנון"),
@@ -151,13 +153,17 @@ def install(app_module) -> None:
             )
 
         can_create = selected_count > 0 and not duplicate_selected
-        if st.button(
-            "צור כרטיסיית תכנון",
-            type="primary",
-            width="stretch",
-            disabled=not can_create,
-            key=f"create_planning_sheet_{year}_{month}",
-        ):
+        action_col, _ = st.columns([1, 4])
+        with action_col:
+            create_clicked = st.button(
+                "צור כרטיסיית תכנון",
+                type="primary",
+                width="stretch",
+                disabled=not can_create,
+                key=f"create_planning_sheet_{year}_{month}",
+            )
+
+        if create_clicked:
             selected_submissions = []
             for _, row in selected_rows.iterrows():
                 source = submissions[int(row["_submission_index"])]
