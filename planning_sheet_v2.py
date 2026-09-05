@@ -209,7 +209,7 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
                 employee,
                 f'=COUNTIFS($D${month_start_row}:$D${month_end_row},A{row_number},$B${month_start_row}:$B${month_end_row},"ו")',
                 f'=COUNTIFS($D${month_start_row}:$D${month_end_row},A{row_number},$B${month_start_row}:$B${month_end_row},"ש")',
-                f'=COUNTIF($G${month_start_row}:$G${month_end_row},A{row_number})',
+                f'=COUNTIFS($G${month_start_row}:$G${month_end_row},A{row_number},$B${month_start_row}:$B${month_end_row},"ו")',
                 f'=SUM(B{row_number}:D{row_number})',
                 "",
             ]
@@ -247,6 +247,22 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
                     "endColumnIndex": 4,
                 },
                 "rule": dropdown_rule,
+            }
+        }
+    )
+
+    # Explicitly clear validation for day-hospital, ER and Friday-visit cells
+    # across the whole month before adding it back only where relevant.
+    format_requests.append(
+        {
+            "setDataValidation": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": month_start_row - 1,
+                    "endRowIndex": month_end_row,
+                    "startColumnIndex": 4,
+                    "endColumnIndex": 7,
+                }
             }
         }
     )
