@@ -7,10 +7,14 @@ Final Schedules folder.
 """
 from __future__ import annotations
 
+from io import BytesIO
+
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
 
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
+FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 
 
 def _google_section(st):
@@ -58,3 +62,79 @@ def verify_final_schedules_access(st) -> dict:
         fields="id,name,mimeType,capabilities(canAddChildren)",
         supportsAllDrives=True,
     ).execute()
+
+
+def _escape_drive_query(value: str) -> str:
+    return str(value).replace("\\", "\\\\").replace("'", "\\'")
+
+
+def ensure_year_folder(st, year: int) -> dict:
+    """Return the requested year folder, creating it under Final Schedules when absent."""
+    service = drive_service(st)
+    root_id = final_schedules_folder_id(st)
+    year_name = f"{int(year):04d}"
+    safe_year = _escape_drive_query(year_name)
+    query = (
+        f"'{root_id}' in parents and trashed = false and "
+        f"mimeType = '{FOLDER_MIME_TYPE}' and name = '{safe_year}'"
+    )
+    response = service.files().list(
+        q=query,
+        fields="files(id,name,mimeType)",
+        pageSize=10,
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True,
+    ).execute()
+    folders = response.get("files", [])
+    if folders:
+        return folders[0]
+
+    return service.files().create(
+        body={"name": year_name, "mimeType": FOLDER_MIME_TYPE, "parents": [root_id]},
+        fields="id,name,mimeType",
+        supportsAllDrives=True,
+    ).execute()
+
+
+def verify_drive_write_cycle(st, year: int) -> dict:
+    """Create, read back and delete a tiny test file in the year's folder."""
+    service = drive_service(st)
+    folder = ensure_year_folder(st, year)
+    payload = b"MedStaff Google Drive write test"
+    test_file = None
+
+    try:
+        media = MediaIoBaseUpload(
+            BytesIO(payload),
+            mimetype="text/plain",
+            resumable=False,
+        )
+        test_file = service.files().create(
+            body={"name": "drive_test.txt", "parents": [folder["id"]]},
+            media_body=media,
+            fields="id,name,size",
+            supportsAllDrives=True,
+        ).execute()
+
+        downloaded = service.files().get_media(
+            fileId=test_file["id"],
+            supportsAllDrives=True,
+        ).execute()
+        if downloaded != payload:
+            raise RuntimeError("קובץ הבדיקה נוצר, אך התוכן שנקרא חזרה אינו תואם.")
+
+        return {
+            "folder_id": folder["id"],
+            "folder_name": folder["name"],
+            "file_id": test_file["id"],
+            "file_name": test_file["name"],
+        }
+    finally:
+        if test_file and test_file.get("id"):
+            try:
+                service.files().delete(
+                    fileId=test_file["id"],
+                    supportsAllDrives=True,
+                ).execute()
+            except Exception:
+                pass
