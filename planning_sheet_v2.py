@@ -16,6 +16,22 @@ from google_sheets_submissions import (
 PLANNER_HEADERS = ["תורן מחלקה", "תורן א.יום", "תורן מיון", "ביקור שישי", "בחופש"]
 SUMMARY_HEADERS = ["שם", "ת.שישי", "ת.שבת", "ביקור שישי", "סה\"כ", "הערות"]
 
+# Only days that function operationally as non-regular workdays should suppress
+# day-hospital / ER planner dropdowns. Awareness/family/school markers remain
+# visible in the special-day column without disabling regular assignments.
+NON_REGULAR_ACTIVITY_TERMS = (
+    "ראש השנה",
+    "יום כיפור",
+    "סוכות",
+    "שמיני עצרת",
+    "שמחת תורה",
+    "פסח",
+    "שביעי של פסח",
+    "שבועות",
+    "יום העצמאות",
+    "יום הבחירות לכנסת",
+)
+
 
 def _employee_sort_key(item: dict) -> tuple[int, str]:
     """Sort Hebrew names א-ת first, then Latin names A-Z."""
@@ -23,6 +39,14 @@ def _employee_sort_key(item: dict) -> tuple[int, str]:
     first_alpha = next((char for char in name if char.isalpha()), "")
     is_hebrew = bool(first_alpha and "א" <= first_alpha <= "ת")
     return (0 if is_hebrew else 1, name.casefold())
+
+
+def _is_regular_activity_day(row: dict) -> bool:
+    day_label = str(row.get("יום", "") or "").strip()
+    if day_label in {"ו", "ש"}:
+        return False
+    special = str(row.get("חג / יום מיוחד", "") or "")
+    return not any(term in special for term in NON_REGULAR_ACTIVITY_TERMS)
 
 
 def create_planning_sheet(st, year: int, month: int, month_rows, selected_submissions: list[dict[str, str]]) -> str:
@@ -205,6 +229,13 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
         format_requests.append(_colored_cell_request(sheet_id, 0, column_index, color))
 
     dropdown_values = [{"userEnteredValue": name} for name in employees]
+    dropdown_rule = {
+        "condition": {"type": "ONE_OF_LIST", "values": dropdown_values},
+        "strict": True,
+        "showCustomUi": True,
+    }
+
+    # Ward duty is relevant every day.
     format_requests.append(
         {
             "setDataValidation": {
@@ -213,19 +244,48 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
                     "startRowIndex": month_start_row - 1,
                     "endRowIndex": month_end_row,
                     "startColumnIndex": 3,
-                    "endColumnIndex": 7,
+                    "endColumnIndex": 4,
                 },
-                "rule": {
-                    "condition": {
-                        "type": "ONE_OF_LIST",
-                        "values": dropdown_values,
-                    },
-                    "strict": True,
-                    "showCustomUi": True,
-                },
+                "rule": dropdown_rule,
             }
         }
     )
+
+    # Day-hospital and ER duties are only selectable on regular activity days.
+    # Friday visit is selectable only on Fridays. Cells on other days remain blank
+    # and have no dropdown, reducing accidental assignments.
+    for data_offset, row in enumerate(month_rows):
+        row_index = month_start_row - 1 + data_offset
+        if _is_regular_activity_day(row):
+            format_requests.append(
+                {
+                    "setDataValidation": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": row_index,
+                            "endRowIndex": row_index + 1,
+                            "startColumnIndex": 4,
+                            "endColumnIndex": 6,
+                        },
+                        "rule": dropdown_rule,
+                    }
+                }
+            )
+        if str(row.get("יום", "") or "").strip() == "ו":
+            format_requests.append(
+                {
+                    "setDataValidation": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": row_index,
+                            "endRowIndex": row_index + 1,
+                            "startColumnIndex": 6,
+                            "endColumnIndex": 7,
+                        },
+                        "rule": dropdown_rule,
+                    }
+                }
+            )
 
     format_requests.extend(
         [
