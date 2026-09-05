@@ -183,8 +183,8 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
         summary_values.append(
             [
                 employee,
-                f'=COUNTIFS($D${month_start_row}:$D${month_end_row},A{row_number},$B${month_start_row}:$B${month_end_row},"שישי")',
-                f'=COUNTIFS($D${month_start_row}:$D${month_end_row},A{row_number},$B${month_start_row}:$B${month_end_row},"שבת")',
+                f'=COUNTIFS($D${month_start_row}:$D${month_end_row},A{row_number},$B${month_start_row}:$B${month_end_row},"ו")',
+                f'=COUNTIFS($D${month_start_row}:$D${month_end_row},A{row_number},$B${month_start_row}:$B${month_end_row},"ש")',
                 f'=COUNTIF($G${month_start_row}:$G${month_end_row},A{row_number})',
                 f'=SUM(B{row_number}:D{row_number})',
                 "",
