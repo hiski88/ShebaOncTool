@@ -13,7 +13,7 @@ from google_sheets_submissions import (
     _service,
 )
 
-PLANNER_HEADERS = ["תורן מחלקה", "תורן א.יום", "תורן מיון", "ביקור שישי", "בחופש"]
+PLANNER_HEADERS = ["תורן מחלקה", "תורן א.יום", "תורן מיון", "ביקור שישי", "בחופש", "הערות"]
 SUMMARY_HEADERS = [
     "שם",
     "תורנויות מחלקה",
@@ -171,6 +171,7 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
             date_text,
             str(row.get("יום", "") or ""),
             str(row.get("חג / יום מיוחד", "") or ""),
+            "",
             "",
             "",
             "",
