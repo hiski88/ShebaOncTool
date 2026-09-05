@@ -13,7 +13,8 @@ from google_sheets_submissions import (
     _service,
 )
 
-PLANNER_HEADERS = ["תורן מחלקה", "תורן א.יום", "תורן מיון", "בחופש"]
+PLANNER_HEADERS = ["תורן מחלקה", "תורן א.יום", "תורן מיון", "ביקור שישי", "בחופש"]
+SUMMARY_HEADERS = ["שם", "ת.שישי", "ת.שבת", "ביקור שישי", "סה\"כ", "הערות"]
 
 
 def _employee_sort_key(item: dict) -> tuple[int, str]:
@@ -25,7 +26,7 @@ def _employee_sort_key(item: dict) -> tuple[int, str]:
 
 
 def create_planning_sheet(st, year: int, month: int, month_rows, selected_submissions: list[dict[str, str]]) -> str:
-    """Create a versioned RTL monthly planning tab with planner fields and visible employee notes."""
+    """Create a versioned RTL monthly planning tab with live assignment controls and summary."""
     if not selected_submissions:
         raise RuntimeError("לא נבחרו הגשות לתכנון.")
 
@@ -58,7 +59,15 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
     employee_data.sort(key=_employee_sort_key)
     employees = [item["name"] for item in employee_data]
     headers = ["תאריך", "יום", "חג / יום מיוחד", *PLANNER_HEADERS, *employees]
+    fixed_columns = 3 + len(PLANNER_HEADERS)
     total_columns = len(headers)
+
+    month_start_row = 4
+    month_end_row = month_start_row + len(month_rows) - 1
+    summary_title_row = month_end_row + 2
+    summary_header_row = summary_title_row + 1
+    summary_first_data_row = summary_header_row + 1
+    summary_last_data_row = summary_first_data_row + len(employees) - 1
 
     add_result = service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,
@@ -70,10 +79,10 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
                             "title": title,
                             "rightToLeft": True,
                             "gridProperties": {
-                                "rowCount": max(44, len(month_rows) + 8),
+                                "rowCount": max(50, summary_last_data_row + 6),
                                 "columnCount": max(12, total_columns + 2),
                                 "frozenRowCount": 3,
-                                "frozenColumnCount": 7,
+                                "frozenColumnCount": fixed_columns,
                             },
                         }
                     }
@@ -90,13 +99,13 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
         "X = חסימת מלאה בלבד",
         "V = מעוניין בתורנות",
     ]
-    notes_row = ["הערות", "", "", "", "", "", "", *[item["general_note"] for item in employee_data]]
+    notes_row = ["הערות", *([""] * (fixed_columns - 1)), *[item["general_note"] for item in employee_data]]
     values = [legend_row, headers, notes_row]
 
     format_requests: list[dict] = []
     note_requests: list[dict] = []
 
-    for employee_col, employee in enumerate(employee_data, start=7):
+    for employee_col, employee in enumerate(employee_data, start=fixed_columns):
         if employee["general_note"]:
             note_requests.append(
                 {
@@ -132,9 +141,10 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
             "",
             "",
             "",
+            "",
         ]
 
-        for employee_col, employee in enumerate(employee_data, start=7):
+        for employee_col, employee in enumerate(employee_data, start=fixed_columns):
             status = _day_status(day, employee)
             if status is None:
                 output_row.append("")
@@ -167,11 +177,55 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
         body={"values": values},
     ).execute()
 
+    summary_values = [["סיכום שיבוצי סוף שבוע"], SUMMARY_HEADERS]
+    for offset, employee in enumerate(employees):
+        row_number = summary_first_data_row + offset
+        summary_values.append(
+            [
+                employee,
+                f'=COUNTIFS($D${month_start_row}:$D${month_end_row},A{row_number},$B${month_start_row}:$B${month_end_row},"שישי")',
+                f'=COUNTIFS($D${month_start_row}:$D${month_end_row},A{row_number},$B${month_start_row}:$B${month_end_row},"שבת")',
+                f'=COUNTIF($G${month_start_row}:$G${month_end_row},A{row_number})',
+                f'=SUM(B{row_number}:D{row_number})',
+                "",
+            ]
+        )
+
+    service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id,
+        range=f"'{title}'!A{summary_title_row}",
+        valueInputOption="USER_ENTERED",
+        body={"values": summary_values},
+    ).execute()
+
     for column_index, color in enumerate(
         [STATUS_VACATION[2], STATUS_HALF_BLOCK[2], STATUS_FULL_BLOCK[2], STATUS_WANTS_DUTY[2]],
         start=1,
     ):
         format_requests.append(_colored_cell_request(sheet_id, 0, column_index, color))
+
+    dropdown_values = [{"userEnteredValue": name} for name in employees]
+    format_requests.append(
+        {
+            "setDataValidation": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": month_start_row - 1,
+                    "endRowIndex": month_end_row,
+                    "startColumnIndex": 3,
+                    "endColumnIndex": 7,
+                },
+                "rule": {
+                    "condition": {
+                        "type": "ONE_OF_LIST",
+                        "values": dropdown_values,
+                    },
+                    "strict": True,
+                    "showCustomUi": True,
+                },
+            }
+        }
+    )
 
     format_requests.extend(
         [
@@ -180,7 +234,7 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
                     "range": {
                         "sheetId": sheet_id,
                         "startRowIndex": 0,
-                        "endRowIndex": len(month_rows) + 3,
+                        "endRowIndex": summary_last_data_row,
                         "startColumnIndex": 0,
                         "endColumnIndex": total_columns,
                     },
@@ -252,6 +306,46 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
                         }
                     },
                     "fields": "userEnteredFormat(backgroundColor,horizontalAlignment,verticalAlignment,wrapStrategy,textDirection)",
+                }
+            },
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": summary_title_row - 1,
+                        "endRowIndex": summary_title_row,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": len(SUMMARY_HEADERS),
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "backgroundColor": {"red": 0.88, "green": 0.91, "blue": 0.95},
+                            "horizontalAlignment": "CENTER",
+                            "verticalAlignment": "MIDDLE",
+                            "textFormat": {"bold": True},
+                        }
+                    },
+                    "fields": "userEnteredFormat(backgroundColor,horizontalAlignment,verticalAlignment,textFormat.bold)",
+                }
+            },
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": summary_header_row - 1,
+                        "endRowIndex": summary_header_row,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": len(SUMMARY_HEADERS),
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "backgroundColor": {"red": 0.84, "green": 0.88, "blue": 0.94},
+                            "horizontalAlignment": "CENTER",
+                            "verticalAlignment": "MIDDLE",
+                            "textFormat": {"bold": True},
+                        }
+                    },
+                    "fields": "userEnteredFormat(backgroundColor,horizontalAlignment,verticalAlignment,textFormat.bold)",
                 }
             },
             {
