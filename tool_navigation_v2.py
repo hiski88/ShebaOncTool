@@ -32,12 +32,20 @@ def _password_granted(st, *, secret_name: str, session_key: str, heading: str, w
         return False
 
     st.subheader(heading)
-    entered = st.text_input(
-        "סיסמה",
-        type="password",
-        key=f"{widget_prefix}_password_input",
-    )
-    if st.button("כניסה", type="primary", key=f"{widget_prefix}_login"):
+    password_col, _ = st.columns([1, 5])
+    with password_col:
+        entered = st.text_input(
+            "סיסמה",
+            type="password",
+            key=f"{widget_prefix}_password_input",
+        )
+        login_clicked = st.button(
+            "כניסה",
+            type="primary",
+            width="stretch",
+            key=f"{widget_prefix}_login",
+        )
+    if login_clicked:
         if entered == expected_password:
             st.session_state[session_key] = True
             st.rerun()
