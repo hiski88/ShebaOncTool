@@ -21,6 +21,36 @@ LEGEND_HTML = """
 """
 
 
+def _planner_access_granted(st) -> bool:
+    """Require the shared protected-data password before exposing Tool 2 data."""
+    session_key = "tool2_planner_authenticated"
+    if st.session_state.get(session_key, False):
+        return True
+
+    try:
+        expected_password = str(st.secrets.get("HISTORICAL_DATA_PASSWORD", "") or "")
+    except Exception:
+        expected_password = ""
+
+    if not expected_password:
+        st.error("סיסמת הגישה לכלי המתכנן אינה מוגדרת באפליקציה.")
+        return False
+
+    st.subheader("גישה למתכנן")
+    entered_password = st.text_input(
+        "סיסמה",
+        type="password",
+        key="tool2_planner_password_input",
+    )
+    if st.button("כניסה", type="primary", key="tool2_planner_login"):
+        if entered_password == expected_password:
+            st.session_state[session_key] = True
+            st.rerun()
+        else:
+            st.error("סיסמה שגויה.")
+    return False
+
+
 def install(app_module) -> None:
     if getattr(app_module, "_tool2_submissions_override_installed", False):
         return
@@ -29,8 +59,12 @@ def install(app_module) -> None:
         st = app_module.st
         app_module.render_header(
             "2. ריכוז העדפות ובניית לוז",
-            "בחירת חודש מציגה אוטומטית את כל ההגשות שנקלטו מהצוות.",
+            "כלי מוגן למתכנן לצפייה בהגשות ולבניית לוח התכנון.",
         )
+
+        if not _planner_access_granted(st):
+            return
+
         year, month = app_module.month_selector("manager", offset=1)
 
         if not configured(st):
