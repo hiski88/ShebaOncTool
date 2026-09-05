@@ -8,6 +8,7 @@ Final Schedules folder.
 from __future__ import annotations
 
 from io import BytesIO
+import re
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -15,6 +16,7 @@ from googleapiclient.http import MediaIoBaseUpload
 
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
 FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
+_FINAL_SCHEDULE_RE = re.compile(r"^(?P<year>\d{4})-(?P<month>\d{2})_V(?P<version>\d+)(?P<suffix>.*)\.(?P<ext>xls|xlsx)$", re.IGNORECASE)
 
 
 def _google_section(st):
@@ -94,6 +96,126 @@ def ensure_year_folder(st, year: int) -> dict:
         fields="id,name,mimeType",
         supportsAllDrives=True,
     ).execute()
+
+
+def list_year_files(st, year: int) -> list[dict]:
+    """List non-folder files directly inside the requested year folder."""
+    service = drive_service(st)
+    folder = ensure_year_folder(st, year)
+    query = f"'{folder['id']}' in parents and trashed = false and mimeType != '{FOLDER_MIME_TYPE}'"
+    files: list[dict] = []
+    page_token = None
+    while True:
+        response = service.files().list(
+            q=query,
+            fields="nextPageToken,files(id,name,mimeType,size,createdTime,modifiedTime)",
+            pageSize=1000,
+            pageToken=page_token,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        ).execute()
+        files.extend(response.get("files", []))
+        page_token = response.get("nextPageToken")
+        if not page_token:
+            break
+    return files
+
+
+def parse_final_schedule_filename(filename: str) -> dict | None:
+    """Parse the standard YYYY-MM_VN.xls/xlsx naming convention.
+
+    A suffix after the version is tolerated so Tool 4 can also discover files
+    placed manually in Drive, e.g. 2026-09_V2_final.xlsx.
+    """
+    match = _FINAL_SCHEDULE_RE.match(str(filename or "").strip())
+    if not match:
+        return None
+    result = match.groupdict()
+    return {
+        "year": int(result["year"]),
+        "month": int(result["month"]),
+        "version": int(result["version"]),
+        "extension": result["ext"].lower(),
+    }
+
+
+def next_schedule_version(st, year: int, month: int) -> int:
+    """Return one more than the highest Drive version for the requested month."""
+    highest = 0
+    for item in list_year_files(st, year):
+        parsed = parse_final_schedule_filename(item.get("name", ""))
+        if not parsed:
+            continue
+        if parsed["year"] == int(year) and parsed["month"] == int(month):
+            highest = max(highest, parsed["version"])
+    return highest + 1
+
+
+def build_schedule_filename(year: int, month: int, version: int, extension: str) -> str:
+    ext = str(extension or "").lower().lstrip(".")
+    if ext not in {"xls", "xlsx"}:
+        raise ValueError("ניתן לשמור רק קבצי XLS או XLSX.")
+    return f"{int(year):04d}-{int(month):02d}_V{int(version)}.{ext}"
+
+
+def upload_final_schedule(st, year: int, month: int, original_filename: str, content: bytes) -> dict:
+    """Store original bytes under the next standard versioned filename.
+
+    Version is derived from the files that actually exist in Drive, not from
+    the metadata index, so files placed manually in Drive are respected too.
+    """
+    original = str(original_filename or "").strip()
+    extension = original.rsplit(".", 1)[-1].lower() if "." in original else ""
+    if extension not in {"xls", "xlsx"}:
+        raise ValueError("ניתן להעלות רק קבצי XLS או XLSX.")
+    if not content:
+        raise ValueError("הקובץ שהועלה ריק.")
+
+    service = drive_service(st)
+    folder = ensure_year_folder(st, year)
+    version = next_schedule_version(st, year, month)
+    stored_filename = build_schedule_filename(year, month, version, extension)
+
+    # Re-check the exact target name just before writing. Google Drive permits
+    # duplicate names, so this guard avoids an accidental collision if another
+    # upload occurred between preview and save.
+    while True:
+        safe_name = _escape_drive_query(stored_filename)
+        query = f"'{folder['id']}' in parents and trashed = false and name = '{safe_name}'"
+        existing = service.files().list(
+            q=query,
+            fields="files(id,name)",
+            pageSize=10,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        ).execute().get("files", [])
+        if not existing:
+            break
+        version += 1
+        stored_filename = build_schedule_filename(year, month, version, extension)
+
+    mimetype = (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        if extension == "xlsx"
+        else "application/vnd.ms-excel"
+    )
+    media = MediaIoBaseUpload(BytesIO(content), mimetype=mimetype, resumable=False)
+    created = service.files().create(
+        body={"name": stored_filename, "parents": [folder["id"]]},
+        media_body=media,
+        fields="id,name,mimeType,size,createdTime,webViewLink",
+        supportsAllDrives=True,
+    ).execute()
+    return {
+        **created,
+        "year": int(year),
+        "month": int(month),
+        "version": int(version),
+        "extension": extension,
+        "original_filename": original,
+        "stored_filename": stored_filename,
+        "year_folder_id": folder["id"],
+    }
 
 
 def verify_drive_write_cycle(st, year: int) -> dict:
