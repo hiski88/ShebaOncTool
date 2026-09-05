@@ -61,39 +61,10 @@ def install(app_module) -> None:
     original_tool_manager = app_module.tool_manager
     original_tool_calendar = app_module.tool_calendar
 
-    def tool_final_schedule_upload_placeholder() -> None:
-        st = app_module.st
-        app_module.render_header(
-            "3. העלאת סידור סופי",
-            "כלי למתכנן לשמירת הסידור הסופי במערכת.",
-        )
-        st.info("לפני בניית ההעלאה המלאה, נוודא שהאפליקציה יכולה ליצור, לקרוא ולמחוק קובץ בדיקה ב-Google Drive.")
+    def tool_final_schedule_upload() -> None:
+        from tool3_final_schedule import render
 
-        test_col, _ = st.columns([1, 4])
-        with test_col:
-            run_test = st.button(
-                "בדיקת כתיבה ל-Google Drive",
-                type="primary",
-                key="tool3_drive_write_test",
-                width="stretch",
-            )
-
-        if run_test:
-            try:
-                from datetime import datetime
-                from zoneinfo import ZoneInfo
-
-                from google_drive_storage import verify_drive_write_cycle
-
-                current_year = datetime.now(ZoneInfo("Asia/Jerusalem")).year
-                with st.spinner("בודק כתיבה ל-Google Drive..."):
-                    result = verify_drive_write_cycle(st, current_year)
-                st.success(
-                    f"הבדיקה הצליחה. התיקייה {result['folder_name']} זמינה לכתיבה, "
-                    "קובץ הבדיקה נוצר, נקרא ונמחק בהצלחה."
-                )
-            except Exception as exc:
-                st.error(f"בדיקת הכתיבה ל-Google Drive נכשלה: {exc}")
+        render(app_module)
 
     def tool_historical_placeholder() -> None:
         st = app_module.st
@@ -143,7 +114,7 @@ def install(app_module) -> None:
                 widget_prefix="manager_tools",
             ):
                 return
-            tool_final_schedule_upload_placeholder()
+            tool_final_schedule_upload()
             return
 
         if tool == "4. יצירת זימונים":
