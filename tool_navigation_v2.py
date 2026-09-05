@@ -19,12 +19,16 @@ def _password_granted(st, *, secret_name: str, session_key: str, heading: str, w
         return True
 
     try:
-        expected_password = str(st.secrets.get(secret_name, "") or "")
-    except Exception:
-        expected_password = ""
+        if secret_name not in st.secrets:
+            st.error(f"סיסמת הגישה לכלי זה אינה מוגדרת באפליקציה ({secret_name}).")
+            return False
+        expected_password = str(st.secrets[secret_name] or "")
+    except Exception as exc:
+        st.error(f"לא ניתן לקרוא את סיסמת הגישה ({secret_name}): {exc}")
+        return False
 
     if not expected_password:
-        st.error("סיסמת הגישה לכלי זה אינה מוגדרת באפליקציה.")
+        st.error(f"סיסמת הגישה לכלי זה ריקה ({secret_name}).")
         return False
 
     st.subheader(heading)
