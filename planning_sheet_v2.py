@@ -14,7 +14,17 @@ from google_sheets_submissions import (
 )
 
 PLANNER_HEADERS = ["תורן מחלקה", "תורן א.יום", "תורן מיון", "ביקור שישי", "בחופש"]
-SUMMARY_HEADERS = ["שם", "ת.שישי", "ת.שבת", "ביקור שישי", "סה\"כ", "הערות"]
+SUMMARY_HEADERS = [
+    "שם",
+    "תורנויות מחלקה",
+    "מתוכן שישי",
+    "מתוכן שבת",
+    "ביקור שישי",
+    "תורנויות א.יום",
+    "תורנויות מיון",
+    "סה\"כ תורנויות",
+    "סה\"כ מטלות",
+]
 
 # Only days that function operationally as non-regular workdays should suppress
 # day-hospital / ER planner dropdowns. Awareness/family/school markers remain
@@ -201,17 +211,20 @@ def create_planning_sheet(st, year: int, month: int, month_rows, selected_submis
         body={"values": values},
     ).execute()
 
-    summary_values = [["סיכום שיבוצי סוף שבוע"], SUMMARY_HEADERS]
+    summary_values = [["סיכום שיבוצים"], SUMMARY_HEADERS]
     for offset, employee in enumerate(employees):
         row_number = summary_first_data_row + offset
         summary_values.append(
             [
                 employee,
+                f'=COUNTIF($D${month_start_row}:$D${month_end_row},A{row_number})',
                 f'=COUNTIFS($D${month_start_row}:$D${month_end_row},A{row_number},$B${month_start_row}:$B${month_end_row},"ו")',
                 f'=COUNTIFS($D${month_start_row}:$D${month_end_row},A{row_number},$B${month_start_row}:$B${month_end_row},"ש")',
                 f'=COUNTIFS($G${month_start_row}:$G${month_end_row},A{row_number},$B${month_start_row}:$B${month_end_row},"ו")',
-                f'=SUM(B{row_number}:D{row_number})',
-                "",
+                f'=COUNTIF($E${month_start_row}:$E${month_end_row},A{row_number})',
+                f'=COUNTIF($F${month_start_row}:$F${month_end_row},A{row_number})',
+                f'=SUM(B{row_number},F{row_number},G{row_number})',
+                f'=SUM(H{row_number},E{row_number})',
             ]
         )
 
