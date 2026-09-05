@@ -65,9 +65,35 @@ def install(app_module) -> None:
         st = app_module.st
         app_module.render_header(
             "3. העלאת סידור סופי",
-            "כלי למתכנן לשמירת הסידור הסופי במערכת. העלאת הקובץ והקליטה למאגר ייבנו בשלב הבא.",
+            "כלי למתכנן לשמירת הסידור הסופי במערכת.",
         )
-        st.info("הכלי מוכן במבנה המערכת. בשלב הבא נוסיף העלאת קובץ, פענוח ושמירה מרכזית.")
+        st.info("לפני בניית ההעלאה המלאה, נוודא שהאפליקציה יכולה ליצור, לקרוא ולמחוק קובץ בדיקה ב-Google Drive.")
+
+        test_col, _ = st.columns([1, 4])
+        with test_col:
+            run_test = st.button(
+                "בדיקת כתיבה ל-Google Drive",
+                type="primary",
+                key="tool3_drive_write_test",
+                width="stretch",
+            )
+
+        if run_test:
+            try:
+                from datetime import datetime
+                from zoneinfo import ZoneInfo
+
+                from google_drive_storage import verify_drive_write_cycle
+
+                current_year = datetime.now(ZoneInfo("Asia/Jerusalem")).year
+                with st.spinner("בודק כתיבה ל-Google Drive..."):
+                    result = verify_drive_write_cycle(st, current_year)
+                st.success(
+                    f"הבדיקה הצליחה. התיקייה {result['folder_name']} זמינה לכתיבה, "
+                    "קובץ הבדיקה נוצר, נקרא ונמחק בהצלחה."
+                )
+            except Exception as exc:
+                st.error(f"בדיקת הכתיבה ל-Google Drive נכשלה: {exc}")
 
     def tool_historical_placeholder() -> None:
         st = app_module.st
@@ -104,9 +130,6 @@ def install(app_module) -> None:
                 widget_prefix="manager_tools",
             ):
                 return
-            # Tool 2 already contains a legacy internal gate. Mark it as
-            # authenticated after the shared manager gate so no second password
-            # prompt is shown.
             st.session_state["tool2_planner_authenticated"] = True
             original_tool_manager()
             return
