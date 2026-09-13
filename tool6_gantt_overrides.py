@@ -13,7 +13,7 @@ from datetime import date, timedelta
 GANTT_MONTH_COUNT = 66
 GANTT_START_COLUMN = "T"
 GANTT_END_COLUMN = "CG"
-INITIAL_SYNC_SESSION_KEY = "tool6_gantt_initial_sync_v1"
+INITIAL_SYNC_SESSION_KEY = "tool6_gantt_initial_sync_v2"
 
 
 def add_months(anchor: date, offset: int) -> date:
@@ -25,6 +25,31 @@ def add_months(anchor: date, offset: int) -> date:
     return date(year, month, day)
 
 
+def _period_gantt_label(period: dict[str, object]) -> str:
+    """Build a compact Gantt label from generic period hierarchy fields.
+
+    The broad period type remains visible, while framework/department and
+    subunit/rotation add the operational detail entered in WorkerPeriods.
+    Repeated identical levels are omitted.
+    """
+    candidates = [
+        str(period.get("period_type", "") or "").strip(),
+        str(period.get("framework", "") or "").strip(),
+        str(period.get("subunit", "") or "").strip(),
+    ]
+    parts: list[str] = []
+    normalized: set[str] = set()
+    for value in candidates:
+        if not value:
+            continue
+        key = value.casefold()
+        if key in normalized:
+            continue
+        normalized.add(key)
+        parts.append(value)
+    return " - ".join(parts)
+
+
 def build_gantt_values(
     specialization_start: date | None,
     periods: list[dict[str, object]],
@@ -34,8 +59,9 @@ def build_gantt_values(
 
     Month 1 starts on the exact specialization start date. Each following
     bucket starts on the corresponding day in the next month. Any period that
-    overlaps a bucket contributes its period type. Multiple simultaneous period
-    types are shown together and exact dates remain in WorkerPeriods.
+    overlaps a bucket contributes its detailed Gantt label. Multiple
+    simultaneous periods are shown together and exact dates remain in
+    WorkerPeriods.
     """
     if specialization_start is None:
         return [""] * month_count
@@ -48,11 +74,11 @@ def build_gantt_values(
         for period in periods:
             period_start = period.get("start_date")
             period_end = period.get("end_date")
-            period_type = str(period.get("period_type", "") or "").strip()
-            if not isinstance(period_start, date) or not isinstance(period_end, date) or not period_type:
+            label = _period_gantt_label(period)
+            if not isinstance(period_start, date) or not isinstance(period_end, date) or not label:
                 continue
-            if period_start <= bucket_end and period_end >= bucket_start and period_type not in labels:
-                labels.append(period_type)
+            if period_start <= bucket_end and period_end >= bucket_start and label not in labels:
+                labels.append(label)
         output.append(" + ".join(labels))
     return output
 
