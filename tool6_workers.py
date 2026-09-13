@@ -1,6 +1,7 @@
 """Tool 6 - worker administration."""
 from __future__ import annotations
 
+from datetime import date
 import re
 
 from google_sheets_submissions import _service
@@ -71,6 +72,9 @@ def _render_add_worker(st) -> None:
     st.subheader("הוספת עובד/ת")
     st.caption("כל השדות במסך זה הם שדות חובה. מזהה העובד נוצר אוטומטית ואינו דורש הזנה.")
 
+    today = date.today()
+    earliest_birth_date = date(today.year - 65, 1, 1)
+
     with st.form("tool6_add_worker_form", clear_on_submit=False):
         st.markdown("### פרטים אישיים")
 
@@ -84,7 +88,13 @@ def _render_add_worker(st) -> None:
         with row2_col1:
             id_number = st.text_input("ת.ז")
         with row2_col2:
-            birth_date = st.date_input("תאריך לידה", value=None, format="DD/MM/YYYY")
+            birth_date = st.date_input(
+                "תאריך לידה",
+                value=None,
+                min_value=earliest_birth_date,
+                max_value=today,
+                format="DD/MM/YYYY",
+            )
 
         row3_col1, row3_col2 = st.columns(2)
         with row3_col1:
