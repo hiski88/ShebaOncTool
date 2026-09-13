@@ -7,12 +7,16 @@ from google_sheets_submissions import _service
 
 
 WORKERS_SHEET = "Workers"
-MARITAL_DISPLAY_TO_VALUE = {
-    "רווק/ה": "ר",
-    "נשוי/אה": "נ",
-    "גרוש/ה": "ג",
-    "אלמן/ה": "א",
-}
+MARITAL_STATUS_OPTIONS = [
+    "רווק/ה",
+    "בזוגיות / ידוע/ה בציבור",
+    "נשוי/אה",
+    "פרוד/ה",
+    "גרוש/ה",
+    "אלמן/ה",
+    "אחר",
+    "מעדיף/ה לא לציין",
+]
 CHILDREN_OPTIONS = ["0", "1", "2", "3", "4", "5", "6", "7+"]
 TRACK_OPTIONS = ["אונקולוגיה רפואית", "רדיותרפיה"]
 STATUS_OPTIONS = ["פעיל", "לא פעיל"]
@@ -75,7 +79,7 @@ def _render_add_worker(st) -> None:
             id_number = st.text_input("ת.ז")
             address = st.text_input("כתובת")
             phone = st.text_input("טלפון")
-            marital_status = st.selectbox("מצב משפחתי", list(MARITAL_DISPLAY_TO_VALUE))
+            marital_status = st.selectbox("מצב משפחתי", MARITAL_STATUS_OPTIONS)
             children = st.selectbox("מספר ילדים", CHILDREN_OPTIONS)
         with col2:
             last_name = st.text_input("שם משפחה")
@@ -157,7 +161,7 @@ def _render_add_worker(st) -> None:
         locality.strip(),
         phone.strip(),
         email.strip(),
-        MARITAL_DISPLAY_TO_VALUE[marital_status],
+        marital_status,
         children,
         track,
         status,
