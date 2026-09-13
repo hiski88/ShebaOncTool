@@ -1,9 +1,10 @@
-"""Six-tool navigation and shared access gates.
+"""Application tool navigation and shared access gates.
 
 Access policy:
-- Tool 1 is public to staff.
-- Tools 2-3 and 6 share the manager password.
-- Tools 4-5 share the staff password.
+- Tool 1 is the employee preference tool.
+- Tools 2-3 and 6-7 are management tools.
+- Tools 4-5 are staff tools.
+- The entry flow authenticates managers before this navigation is shown.
 
 Passwords are read only from Streamlit Secrets and are never stored in code.
 """
@@ -79,7 +80,12 @@ def install(app_module) -> None:
 
         render(app_module)
 
-    def main_six_tools() -> None:
+    def tool_system_users() -> None:
+        from tool7_system_users import render
+
+        render(app_module)
+
+    def main_tools() -> None:
         st = app_module.st
         st.sidebar.title("כלי המערכת")
         tool = st.sidebar.radio(
@@ -91,6 +97,7 @@ def install(app_module) -> None:
                 "4. יצירת זימונים",
                 "5. נתונים היסטוריים והוגנות",
                 "6. ניהול עובדים",
+                "7. משתמשים והרשאות",
             ],
         )
 
@@ -147,15 +154,27 @@ def install(app_module) -> None:
             tool_historical_placeholder()
             return
 
+        if tool == "6. ניהול עובדים":
+            if not _password_granted(
+                st,
+                secret_name=MANAGER_PASSWORD_SECRET,
+                session_key="manager_tools_authenticated",
+                heading="גישה לניהול עובדים",
+                widget_prefix="manager_tools",
+            ):
+                return
+            tool_workers()
+            return
+
         if not _password_granted(
             st,
             secret_name=MANAGER_PASSWORD_SECRET,
             session_key="manager_tools_authenticated",
-            heading="גישה לניהול עובדים",
+            heading="גישה למשתמשים והרשאות",
             widget_prefix="manager_tools",
         ):
             return
-        tool_workers()
+        tool_system_users()
 
-    app_module.main = main_six_tools
+    app_module.main = main_tools
     app_module._tool_navigation_v2_installed = True
