@@ -2,10 +2,9 @@
 
 Storage responsibilities are intentionally narrow:
 - keep the original spreadsheet bytes unchanged;
-- store them in the configured Google Drive archive using a standard name;
+- verify the schedule belongs to the selected month before archiving;
+- store it in the configured Google Drive archive using a standard name;
 - record lightweight catalog metadata in FinalSchedulesIndex.
-
-Schedule parsing/business rules remain outside this module and belong to Tool 4.
 """
 from __future__ import annotations
 
@@ -22,6 +21,7 @@ from google_drive_storage import (
     verify_drive_write_cycle,
 )
 from google_sheets_submissions import _service as sheets_service
+from schedule_parser import detect_month_year, read_schedule_workbook
 
 INDEX_SHEET_NAME = "FinalSchedulesIndex"
 INDEX_HEADERS = [
@@ -146,6 +146,12 @@ def _preview_excel(content: bytes) -> pd.DataFrame:
     return preview.fillna("")
 
 
+def _detect_uploaded_period(content: bytes, filename: str, config: dict) -> tuple[int, int] | None:
+    workbook = read_schedule_workbook(content, filename)
+    sheet = workbook.sheet_by_preference(config.get("schedule", {}).get("sheet_names", []))
+    return detect_month_year(sheet, config)
+
+
 def render(app_module) -> None:
     st = app_module.st
     app_module.render_header(
@@ -193,6 +199,30 @@ def render(app_module) -> None:
     if extension not in {"xls", "xlsx"}:
         st.error("ניתן להעלות רק קבצי XLS או XLSX.")
         return
+
+    try:
+        detected_period = _detect_uploaded_period(content, original_name, app_module.CONFIG)
+    except Exception as exc:
+        st.error(f"לא ניתן לאמת לאיזה חודש שייך הקובץ: {exc}")
+        return
+
+    if detected_period is None:
+        st.error(
+            "לא ניתן לזהות באופן אמין את החודש והשנה מתוך הסידור. "
+            "הקובץ לא יישמר עד שניתן יהיה לאמת את החודש שלו."
+        )
+        return
+
+    detected_year, detected_month = detected_period
+    detected_name = MONTH_NAMES[detected_month - 1]
+    if (detected_year, detected_month) != (year, month):
+        st.error(
+            f"הקובץ מזוהה כסידור של {detected_name} {detected_year}, "
+            f"אך במסך נבחר {month_name} {year}. יש לבחור את החודש הנכון לפני השמירה."
+        )
+        return
+
+    st.success(f"אומת שהקובץ שייך ל-{detected_name} {detected_year}.")
 
     st.subheader("תצוגה מקדימה")
     try:
