@@ -73,7 +73,7 @@ def _render_add_worker(st) -> None:
     st.caption("כל השדות במסך זה הם שדות חובה. מזהה העובד נוצר אוטומטית ואינו דורש הזנה.")
 
     today = date.today()
-    earliest_birth_date = date(today.year - 65, 1, 1)
+    earliest_birth_date = date(today.year - 70, 1, 1)
 
     with st.form("tool6_add_worker_form", clear_on_submit=False):
         st.markdown("### פרטים אישיים")
