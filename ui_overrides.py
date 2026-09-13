@@ -131,11 +131,6 @@ def install(app_module) -> None:
             text-align: right !important;
         }
 
-        section[data-testid="stSidebar"] [data-testid="stRadio"] > label,
-        section[data-testid="stSidebar"] [data-testid="stRadio"] [data-testid="stWidgetLabel"] {
-            display: none !important;
-        }
-
         section[data-testid="stSidebar"] [role="radiogroup"] label,
         section[data-testid="stSidebar"] [role="radiogroup"] label > div {
             direction: rtl !important;
