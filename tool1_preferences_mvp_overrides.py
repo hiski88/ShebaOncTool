@@ -1,6 +1,8 @@
 """Tool 1 MVP preference editor with full/half-duty availability and positive preferences."""
 from __future__ import annotations
 
+import streamlit.components.v1 as components
+
 
 CONTROL_ROW_LABEL = "כל החודש"
 IDENTIFIED_WORKER_KEY = "medstaff_identified_worker_v1"
@@ -30,6 +32,60 @@ def _simple_output(employee: str, edited, general_note: str) -> str:
     if note:
         lines.append(f"הערה כללית- {note}")
     return "\n".join(lines)
+
+
+def _scroll_table_to_start_on_mobile(st, year: int, month: int) -> None:
+    """Open Tool 1 at the visual RTL start without snapping back after every edit.
+
+    Streamlit's data editor keeps its horizontal scroller LTR even when the app
+    itself is RTL. On a narrow screen this means the editor initially exposes
+    the left-most preference columns while the date/day columns are off-screen
+    to the right. The tiny component below runs only once per month/session and
+    moves the editor's actual overflowing descendant to its right-most edge.
+    """
+    state_key = f"tool1_mobile_initial_scroll_{year}_{month}"
+    if st.session_state.get(state_key):
+        return
+
+    components.html(
+        """
+        <script>
+        (() => {
+          const host = window.parent;
+          if (!host || host.innerWidth > 768) return;
+
+          const moveToStart = () => {
+            const editors = host.document.querySelectorAll('[data-testid="stDataEditor"]');
+            const editor = editors[editors.length - 1];
+            if (!editor) return;
+
+            let scroller = null;
+            let largestOverflow = 0;
+            const candidates = [editor, ...editor.querySelectorAll('*')];
+            for (const node of candidates) {
+              const overflow = Number(node.scrollWidth || 0) - Number(node.clientWidth || 0);
+              if (overflow > largestOverflow + 4) {
+                largestOverflow = overflow;
+                scroller = node;
+              }
+            }
+
+            if (scroller && largestOverflow > 4) {
+              scroller.scrollLeft = scroller.scrollWidth;
+              if (typeof scroller.scrollTo === 'function') {
+                scroller.scrollTo({left: scroller.scrollWidth, top: scroller.scrollTop, behavior: 'auto'});
+              }
+            }
+          };
+
+          [0, 80, 200, 450, 900, 1600].forEach((delay) => host.setTimeout(moveToStart, delay));
+        })();
+        </script>
+        """,
+        height=0,
+        scrolling=False,
+    )
+    st.session_state[state_key] = True
 
 
 def install(app_module) -> None:
@@ -117,6 +173,7 @@ def install(app_module) -> None:
             },
             key=f"preferences_table_{year}_{month}",
         )
+        _scroll_table_to_start_on_mobile(st, year, month)
 
         real_rows = edited[edited["יום"].astype(str) != CONTROL_ROW_LABEL]
         st.caption("שימו לב: אם מסמנים חופש, יש לחסום תורנות מלאה ביום שלפני.")
