@@ -3,6 +3,7 @@ from __future__ import annotations
 
 
 CONTROL_ROW_LABEL = "כל החודש"
+IDENTIFIED_WORKER_KEY = "medstaff_identified_worker_v1"
 
 
 def _simple_output(employee: str, edited, general_note: str) -> str:
@@ -42,7 +43,18 @@ def install(app_module) -> None:
             "מסמנים חופש, חסימות והעדפות לתורנות. אירועי היומן וההערות האישיות נשארים פרטיים ומשמשים לעזר בלבד.",
         )
         year, month = app_module.month_selector("preferences", offset=1)
-        employee = st.text_input("שם עובד/ת", placeholder="שם מלא", key="preferences_employee")
+
+        identified_worker = st.session_state.get(IDENTIFIED_WORKER_KEY)
+        if isinstance(identified_worker, dict) and identified_worker.get("full_name"):
+            employee = str(identified_worker["full_name"]).strip()
+            st.session_state["preferences_employee"] = employee
+            st.text_input(
+                "עובד/ת מזוהה",
+                key="preferences_employee",
+                disabled=True,
+            )
+        else:
+            employee = st.text_input("שם עובד/ת", placeholder="שם מלא", key="preferences_employee")
 
         events_by_date = app_module.render_calendar_reader(year, month)
 
@@ -121,7 +133,7 @@ def install(app_module) -> None:
         )
 
         if not employee.strip():
-            st.info("לאחר הזנת שם, הפלט יופק אוטומטית.")
+            st.info("לאחר זיהוי העובד/ת, הפלט יופק אוטומטית.")
             return
 
         try:
