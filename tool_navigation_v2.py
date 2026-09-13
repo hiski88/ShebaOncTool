@@ -1,8 +1,8 @@
-"""Five-tool navigation and shared access gates.
+"""Six-tool navigation and shared access gates.
 
 Access policy:
 - Tool 1 is public to staff.
-- Tools 2-3 share the manager password.
+- Tools 2-3 and 6 share the manager password.
 - Tools 4-5 share the staff password.
 
 Passwords are read only from Streamlit Secrets and are never stored in code.
@@ -74,7 +74,12 @@ def install(app_module) -> None:
         )
         st.info("כלי הנתונים ההיסטוריים וההוגנות ייבנה בשלב האחרון.")
 
-    def main_five_tools() -> None:
+    def tool_workers() -> None:
+        from tool6_workers import render
+
+        render(app_module)
+
+    def main_six_tools() -> None:
         st = app_module.st
         st.sidebar.title("כלי המערכת")
         tool = st.sidebar.radio(
@@ -85,6 +90,7 @@ def install(app_module) -> None:
                 "3. העלאת סידור סופי",
                 "4. יצירת זימונים",
                 "5. נתונים היסטוריים והוגנות",
+                "6. ניהול עובדים",
             ],
         )
 
@@ -129,15 +135,27 @@ def install(app_module) -> None:
             original_tool_calendar()
             return
 
+        if tool == "5. נתונים היסטוריים והוגנות":
+            if not _password_granted(
+                st,
+                secret_name=STAFF_PASSWORD_SECRET,
+                session_key="staff_tools_authenticated",
+                heading="גישה לכלי הצוות",
+                widget_prefix="staff_tools",
+            ):
+                return
+            tool_historical_placeholder()
+            return
+
         if not _password_granted(
             st,
-            secret_name=STAFF_PASSWORD_SECRET,
-            session_key="staff_tools_authenticated",
-            heading="גישה לכלי הצוות",
-            widget_prefix="staff_tools",
+            secret_name=MANAGER_PASSWORD_SECRET,
+            session_key="manager_tools_authenticated",
+            heading="גישה לניהול עובדים",
+            widget_prefix="manager_tools",
         ):
             return
-        tool_historical_placeholder()
+        tool_workers()
 
-    app_module.main = main_five_tools
+    app_module.main = main_six_tools
     app_module._tool_navigation_v2_installed = True
