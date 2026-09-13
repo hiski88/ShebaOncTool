@@ -64,7 +64,9 @@ def _append_worker(st, values: list[str]) -> None:
         spreadsheetId=spreadsheet_id,
         range=f"'{WORKERS_SHEET}'!A:S",
         valueInputOption="USER_ENTERED",
-        insertDataOption="INSERT_ROWS",
+        # Use the next existing grid row instead of inserting a fresh unformatted
+        # row. This preserves the date/text formats prepared in the Workers tab.
+        insertDataOption="OVERWRITE",
         body={"values": [values]},
     ).execute()
 
