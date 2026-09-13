@@ -15,9 +15,11 @@ from preferences_output_overrides import install as install_preferences_output_o
 from preferences_privacy_overrides import install as install_preferences_privacy_overrides
 from schedule_layout_overrides import install as install_schedule_layout_overrides
 from special_days_engine import install as install_special_days_engine
+from system_role_labels_overrides import install as install_system_role_labels_overrides
 from tool1_preferences_mvp_overrides import install as install_tool1_preferences_mvp_overrides
 from tool2_submissions_overrides import install as install_tool2_submissions_overrides
 from tool3_minimal_overrides import install as install_tool3_minimal_overrides
+from tool6_gantt_overrides import install as install_tool6_gantt_overrides
 from tool_navigation_v2 import install as install_tool_navigation_v2
 from ui_overrides import install as install_ui_overrides
 
@@ -56,6 +58,12 @@ install_tool2_submissions_overrides(app_v2)
 install_schedule_layout_overrides(app_v2)
 install_tool3_minimal_overrides(app_v2)
 install_calendar_time_overrides(app_v2)
+# Keep WorkerPeriods as the exact-date source of truth and derive the 66-month
+# Workers overview automatically whenever Tool 6 data changes.
+install_tool6_gantt_overrides(app_v2)
+# Normalize the legacy permission-admin role to its clearer UI label while
+# remaining backward compatible with already stored SystemUsers rows.
+install_system_role_labels_overrides(app_v2)
 # Install tool navigation first, then wrap it with the role-based entry screen.
 # This keeps the sidebar hidden until manager authentication succeeds.
 install_tool_navigation_v2(app_v2)
