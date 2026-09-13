@@ -6,7 +6,52 @@ schedule instead of requiring each employee to upload the source file.
 """
 from __future__ import annotations
 
+import copy
+
 import pandas as pd
+
+SESSION_TIME_SETTINGS_KEY = "calendar_time_settings_v1"
+CALENDAR_TASK_CODES = {
+    "ward_duty_regular",
+    "ward_duty_friday",
+    "ward_duty_saturday",
+    "er_duty",
+    "day_hospital_duty",
+    "vacation",
+    "research",
+    "study_day",
+    "absence",
+    "absence_other",
+    "shahar_program",
+}
+STATUS_EVENT_CODES = {"vacation", "research", "study_day", "absence", "absence_other", "shahar_program"}
+
+
+def _session_calendar_config(app_module, st) -> dict:
+    """Build an isolated config copy for the current Streamlit session."""
+    config = copy.deepcopy(app_module.CONFIG)
+    overrides = st.session_state.get(SESSION_TIME_SETTINGS_KEY, {})
+    if isinstance(overrides, dict):
+        defaults = config.setdefault("event_defaults", {})
+        for code, settings in overrides.items():
+            if not isinstance(settings, dict):
+                continue
+            defaults.setdefault(str(code), {}).update(copy.deepcopy(settings))
+    return config
+
+
+def _calendar_candidate_events(app_module, records, employee: str, config: dict):
+    selected = records[
+        (records["employee"] == employee)
+        & (records["task_code"].isin(CALENDAR_TASK_CODES))
+    ].copy()
+    event_config = copy.deepcopy(config)
+    defaults = event_config.setdefault("event_defaults", {})
+    for code in STATUS_EVENT_CODES:
+        defaults.setdefault(code, {"all_day": True})["create"] = True
+        defaults[code].setdefault("all_day", True)
+    events = app_module.records_to_events(selected, employee, event_config)
+    return selected, events, event_config
 
 
 def install(app_module) -> None:
@@ -20,6 +65,8 @@ def install(app_module) -> None:
             "מעלים את הלוז הסופי, בוחרים עובד/ת ומורידים קובץ ICS עם תורנויות ואירועים חשובים בלבד.",
         )
 
+        config = _session_calendar_config(app_module, st)
+
         uploaded = st.file_uploader(
             "העלאת לוז סופי",
             type=["xls", "xlsx", "xlsm"],
@@ -31,7 +78,7 @@ def install(app_module) -> None:
 
         try:
             workbook = app_module.read_schedule_workbook(uploaded.getvalue(), uploaded.name)
-            names = sorted(set(app_module.infer_employee_names(workbook, app_module.CONFIG)))
+            names = sorted(set(app_module.infer_employee_names(workbook, config)))
         except Exception as exc:
             st.error(f"לא ניתן לקרוא את הלוז: {exc}")
             return
@@ -46,12 +93,17 @@ def install(app_module) -> None:
         employee = st.selectbox("בחירת עובד/ת", names, key="calendar_employee")
 
         try:
-            records = app_module.parse_schedule(workbook, app_module.CONFIG, names)
+            records = app_module.parse_schedule(workbook, config, names)
         except Exception as exc:
             st.error(f"פענוח הלוז נכשל: {exc}")
             return
 
-        candidate_records, events, event_config = app_module.calendar_candidate_events(records, employee)
+        candidate_records, events, event_config = _calendar_candidate_events(
+            app_module,
+            records,
+            employee,
+            config,
+        )
 
         st.subheader("אירועים שזוהו")
         if candidate_records.empty:
