@@ -122,75 +122,42 @@ def submit_preferences(
     edited,
     general_note: str = "",
 ) -> list[str]:
-    """Insert a new submission directly below the header and verify it by reading it back."""
+    """Append one submission atomically and verify the exact row written by Sheets."""
     service, spreadsheet_id, sheet_name = _service(st)
     values = _submission_values(employee, year, month, edited, general_note=general_note)
 
-    metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-    sheet = next(
-        (item for item in metadata.get("sheets", []) if item.get("properties", {}).get("title") == sheet_name),
-        None,
-    )
-    if sheet is None:
-        raise RuntimeError(f"לא נמצאה הכרטיסייה '{sheet_name}' בקובץ Google Sheets.")
-    sheet_id = int(sheet["properties"]["sheetId"])
-
-    service.spreadsheets().batchUpdate(
+    # A single values.append call lets Google Sheets choose a unique destination
+    # row for every request. Unlike the old insert-row-then-update flow, two staff
+    # members submitting at the same time cannot target the same A2:H2 range.
+    result = service.spreadsheets().values().append(
         spreadsheetId=spreadsheet_id,
-        body={
-            "requests": [
-                {
-                    "insertDimension": {
-                        "range": {
-                            "sheetId": sheet_id,
-                            "dimension": "ROWS",
-                            "startIndex": 1,
-                            "endIndex": 2,
-                        },
-                        "inheritFromBefore": False,
-                    }
-                }
-            ]
-        },
+        range=f"'{sheet_name}'!A:H",
+        valueInputOption="RAW",
+        insertDataOption="INSERT_ROWS",
+        includeValuesInResponse=True,
+        responseValueRenderOption="FORMATTED_VALUE",
+        body={"values": [values]},
     ).execute()
 
-    range_name = f"'{sheet_name}'!A2:H2"
-    try:
-        service.spreadsheets().values().update(
+    updates = result.get("updates", {})
+    stored_rows = updates.get("updatedData", {}).get("values", [])
+
+    # The API normally returns the inserted values when includeValuesInResponse
+    # is enabled. If it does not, verify the exact range returned by the append
+    # operation rather than reading a shared fixed row.
+    if stored_rows:
+        stored = stored_rows[0]
+    else:
+        updated_range = str(updates.get("updatedRange", "") or "").strip()
+        if not updated_range:
+            raise RuntimeError("ההגשה נשלחה, אך Google Sheets לא החזיר את מיקום השורה שנכתבה.")
+        check = service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id,
-            range=range_name,
-            valueInputOption="RAW",
-            body={"values": [values]},
+            range=updated_range,
+            valueRenderOption="FORMATTED_VALUE",
         ).execute()
-    except Exception:
-        try:
-            service.spreadsheets().batchUpdate(
-                spreadsheetId=spreadsheet_id,
-                body={
-                    "requests": [
-                        {
-                            "deleteDimension": {
-                                "range": {
-                                    "sheetId": sheet_id,
-                                    "dimension": "ROWS",
-                                    "startIndex": 1,
-                                    "endIndex": 2,
-                                }
-                            }
-                        }
-                    ]
-                },
-            ).execute()
-        except Exception:
-            pass
-        raise
+        stored = check.get("values", [[]])[0]
 
-    check = service.spreadsheets().values().get(
-        spreadsheetId=spreadsheet_id,
-        range=range_name,
-        valueRenderOption="FORMATTED_VALUE",
-    ).execute()
-    stored = check.get("values", [[]])[0]
     padded = [str(item) for item in stored] + [""] * (SUBMISSION_COLUMN_COUNT - len(stored))
     if padded[:SUBMISSION_COLUMN_COUNT] != values:
         raise RuntimeError("ההגשה נשלחה, אך לא ניתן היה לאמת שהמידע נקלט במלואו.")
@@ -198,8 +165,19 @@ def submit_preferences(
     return values
 
 
+def _submission_time(value: str) -> datetime:
+    """Parse stored submission timestamps for stable newest-first display."""
+    text = str(value or "").strip()
+    for pattern in ("%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M"):
+        try:
+            return datetime.strptime(text, pattern)
+        except ValueError:
+            continue
+    return datetime.min
+
+
 def read_submissions(st, year: int, month: int) -> list[dict[str, str]]:
-    """Read Submissions rows for one month, preserving newest-first sheet order."""
+    """Read one month of submissions and return them newest first."""
     service, spreadsheet_id, sheet_name = _service(st)
     range_name = f"'{sheet_name}'!A2:H"
     response = service.spreadsheets().values().get(
@@ -209,8 +187,8 @@ def read_submissions(st, year: int, month: int) -> list[dict[str, str]]:
     ).execute()
 
     month_value = f"{year:04d}-{month:02d}"
-    rows: list[dict[str, str]] = []
-    for raw in response.get("values", []):
+    indexed_rows: list[tuple[datetime, int, dict[str, str]]] = []
+    for row_index, raw in enumerate(response.get("values", [])):
         values = [str(item) for item in raw] + [""] * (SUBMISSION_COLUMN_COUNT - len(raw))
         (
             submitted_at,
@@ -226,19 +204,23 @@ def read_submissions(st, year: int, month: int) -> list[dict[str, str]]:
             continue
         if not employee.strip():
             continue
-        rows.append(
-            {
-                "זמן הגשה": submitted_at.strip(),
-                "שם עובד": employee.strip(),
-                "חודש": submitted_month.strip(),
-                "חסימת תורנות מלאה": full_blocks.strip(),
-                "חסימת תורנות חצי": half_blocks.strip(),
-                "חופשים": vacations.strip(),
-                "מעוניין בתורנות": wants_duty.strip(),
-                "הערה כללית": general_note.strip(),
-            }
-        )
-    return rows
+        item = {
+            "זמן הגשה": submitted_at.strip(),
+            "שם עובד": employee.strip(),
+            "חודש": submitted_month.strip(),
+            "חסימת תורנות מלאה": full_blocks.strip(),
+            "חסימת תורנות חצי": half_blocks.strip(),
+            "חופשים": vacations.strip(),
+            "מעוניין בתורנות": wants_duty.strip(),
+            "הערה כללית": general_note.strip(),
+        }
+        indexed_rows.append((_submission_time(submitted_at), row_index, item))
+
+    # New submissions are appended at the bottom for concurrency safety, while
+    # older historical submissions may still live near the top. Sort by the
+    # stored timestamp so Tool 2 continues to see the newest submission first.
+    indexed_rows.sort(key=lambda entry: (entry[0], entry[1]), reverse=True)
+    return [entry[2] for entry in indexed_rows]
 
 
 def _day_set(value: str) -> set[int]:
