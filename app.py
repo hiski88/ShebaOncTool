@@ -8,6 +8,7 @@ install_calendar_event_overrides()
 import app_v2
 from calendar_reader_v2 import render_calendar_reader as render_calendar_reader_v2
 from calendar_time_overrides import install as install_calendar_time_overrides
+from entry_flow import install as install_entry_flow
 from google_calendar import handle_oauth_callback
 from month_selector_timezone_overrides import install as install_month_selector_timezone_overrides
 from preferences_output_overrides import install as install_preferences_output_overrides
@@ -55,7 +56,8 @@ install_tool2_submissions_overrides(app_v2)
 install_schedule_layout_overrides(app_v2)
 install_tool3_minimal_overrides(app_v2)
 install_calendar_time_overrides(app_v2)
-# Install navigation last so it captures the fully configured tools and exposes
-# the complete six-tool flow from one sidebar control.
+# Install tool navigation first, then wrap it with the role-based entry screen.
+# This keeps the sidebar hidden until manager authentication succeeds.
 install_tool_navigation_v2(app_v2)
+install_entry_flow(app_v2)
 app_v2.main()
