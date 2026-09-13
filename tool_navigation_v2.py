@@ -92,8 +92,6 @@ def install(app_module) -> None:
                 "5. נתונים היסטוריים והוגנות",
                 "6. ניהול עובדים",
             ],
-            key="primary_tool_navigation",
-            label_visibility="collapsed",
         )
 
         if tool == "1. הזנת העדפות":
