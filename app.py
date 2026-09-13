@@ -17,6 +17,7 @@ from tool1_preferences_mvp_overrides import install as install_tool1_preferences
 from tool2_submissions_overrides import install as install_tool2_submissions_overrides
 from tool3_minimal_overrides import install as install_tool3_minimal_overrides
 from tool_navigation_v2 import install as install_tool_navigation_v2
+from tool6_navigation_override import install as install_tool6_navigation_override
 from ui_overrides import install as install_ui_overrides
 
 
@@ -52,7 +53,7 @@ install_tool2_submissions_overrides(app_v2)
 install_schedule_layout_overrides(app_v2)
 install_tool3_minimal_overrides(app_v2)
 install_calendar_time_overrides(app_v2)
-# Install navigation last so it captures the fully configured Tool 2 and
-# calendar implementations and exposes them under the new five-tool flow.
+# Install the existing navigation first, then extend it with Tool 6.
 install_tool_navigation_v2(app_v2)
+install_tool6_navigation_override(app_v2)
 app_v2.main()
