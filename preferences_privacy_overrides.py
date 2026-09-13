@@ -3,10 +3,14 @@
 The browser localStorage copy is only a persistence backup. During an active
 Streamlit session, session_state is the immediate source of truth so reruns
 cannot lose edits before localStorage has finished updating.
+
+State is stored per month so switching months cannot overwrite another month's
+preferences or carry its general note into the new month.
 """
 from __future__ import annotations
 
 import json
+import re
 import time
 
 try:
@@ -18,7 +22,6 @@ STATE_KEY = "medstaff_oncology_preferences_private_state_v1"
 CALENDAR_EVENTS_KEY = "medstaff_oncology_preferences_calendar_events_v1"
 CALENDAR_LABELS_KEY = "medstaff_oncology_loaded_calendar_labels_v1"
 TTL_SECONDS = 12 * 60 * 60
-CLEAR_REQUEST_KEY = "preferences_private_clear_all_requested_v1"
 RESET_VERSION_KEY = "preferences_private_table_reset_version_v1"
 PENDING_BULK_KEY = "preferences_private_pending_bulk_v1"
 SESSION_STATE_KEY = "preferences_private_live_state_v1"
@@ -30,6 +33,45 @@ BULK_COLUMNS = [
     "חסימת תורנות חצי",
     "מעוניין בתורנות",
 ]
+_NOTE_KEY_RE = re.compile(r"^preferences_general_note_(\d{4})_(\d{1,2})$")
+
+
+def _month_key(year: int, month: int) -> str:
+    return f"{int(year):04d}-{int(month):02d}"
+
+
+def _normalize_store(value) -> dict:
+    """Normalize current and legacy flat state into the per-month schema."""
+    if not isinstance(value, dict):
+        return {"employee": "", "months": {}}
+
+    employee = str(value.get("employee", "") or "")
+    normalized_months: dict[str, dict] = {}
+    months = value.get("months")
+    if isinstance(months, dict):
+        for key, month_value in months.items():
+            if not isinstance(month_value, dict):
+                continue
+            days = month_value.get("days", {})
+            normalized_months[str(key)] = {
+                "days": dict(days) if isinstance(days, dict) else {},
+                "general_note": str(month_value.get("general_note", "") or ""),
+            }
+    else:
+        # Migrate the previous schema, which held only one selected month.
+        try:
+            year = int(value.get("year"))
+            month = int(value.get("month"))
+        except (TypeError, ValueError):
+            year = month = 0
+        if year and 1 <= month <= 12:
+            days = value.get("days", {})
+            normalized_months[_month_key(year, month)] = {
+                "days": dict(days) if isinstance(days, dict) else {},
+                "general_note": str(value.get("general_note", "") or ""),
+            }
+
+    return {"employee": employee, "months": normalized_months}
 
 
 def _read_browser_state():
@@ -38,7 +80,7 @@ def _read_browser_state():
     try:
         raw = streamlit_js_eval(
             js_expressions=f"localStorage.getItem('{STATE_KEY}')",
-            key="load_preferences_private_state_v1",
+            key="load_preferences_private_state_v2",
         )
         if not raw:
             return None
@@ -48,10 +90,10 @@ def _read_browser_state():
         if float(payload.get("expires_at", 0)) <= time.time():
             streamlit_js_eval(
                 js_expressions=f"localStorage.removeItem('{STATE_KEY}');",
-                key="expire_preferences_private_state_v1",
+                key="expire_preferences_private_state_v2",
             )
             return None
-        return payload
+        return _normalize_store(payload)
     except Exception:
         return None
 
@@ -60,29 +102,12 @@ def _write_browser_state(payload: dict) -> None:
     if streamlit_js_eval is None:
         return
     try:
-        data = dict(payload)
+        data = _normalize_store(payload)
         data["expires_at"] = time.time() + TTL_SECONDS
         raw = json.dumps(data, ensure_ascii=False)
         streamlit_js_eval(
             js_expressions=f"localStorage.setItem('{STATE_KEY}', {json.dumps(raw)});",
-            key="save_preferences_private_state_v1",
-        )
-    except Exception:
-        pass
-
-
-def _clear_browser_planning_data() -> None:
-    if streamlit_js_eval is None:
-        return
-    try:
-        expression = (
-            f"localStorage.removeItem('{STATE_KEY}');"
-            f"localStorage.removeItem('{CALENDAR_EVENTS_KEY}');"
-            f"localStorage.removeItem('{CALENDAR_LABELS_KEY}');"
-        )
-        streamlit_js_eval(
-            js_expressions=expression,
-            key="clear_preferences_private_all_v1",
+            key="save_preferences_private_state_v2",
         )
     except Exception:
         pass
@@ -104,7 +129,6 @@ def _normalize_edited_rows(value) -> dict[int, dict]:
 
 
 def _changed_cells(previous: dict[int, dict], current: dict[int, dict]) -> list[tuple[int, str, object]]:
-    """Return cells whose editor delta changed since the preceding callback."""
     changes: list[tuple[int, str, object]] = []
     rows = set(previous) | set(current)
     for row in rows:
@@ -116,30 +140,21 @@ def _changed_cells(previous: dict[int, dict], current: dict[int, dict]) -> list[
             after_has = column in after
             if before_has == after_has and (not before_has or before.get(column) == after.get(column)):
                 continue
-            # If a delta disappears, the cell returned to its input value. We do
-            # not need the input value for day edits. Master clicks always appear
-            # as an explicit delta because a successful bulk action resets the
-            # editor key immediately afterward.
             if after_has:
                 changes.append((row, column, after.get(column)))
     return changes
 
 
-def _clear_session_planning_data(st) -> None:
-    st.session_state.pop("preferences_calendar_events", None)
-    st.session_state.pop("preferences_loaded_calendar_labels", None)
-    st.session_state.pop(PENDING_BULK_KEY, None)
-    st.session_state.pop(SESSION_STATE_KEY, None)
-    st.session_state.pop(EDITOR_SNAPSHOTS_KEY, None)
+def _clear_month_widget_state(st, year: int, month: int) -> None:
+    prefixes = (
+        f"preferences_table_{year}_{month}",
+        f"preferences_simple_output_{year}_{month}",
+        f"preferences_machine_output_{year}_{month}",
+        f"preferences_general_note_{year}_{month}",
+        f"preferences_preview_signature_{year}_{month}",
+    )
     for key in list(st.session_state.keys()):
-        text = str(key)
-        if text.startswith("preferences_table_"):
-            st.session_state.pop(key, None)
-        elif text.startswith("preferences_simple_output_"):
-            st.session_state.pop(key, None)
-        elif text.startswith("preferences_machine_output_"):
-            st.session_state.pop(key, None)
-        elif text.startswith("preferences_general_note_"):
+        if str(key).startswith(prefixes):
             st.session_state.pop(key, None)
 
 
@@ -152,16 +167,12 @@ def install(app_module) -> None:
     def private_tool_preferences() -> None:
         st = app_module.st
 
-        cleared_now = bool(st.session_state.pop(CLEAR_REQUEST_KEY, False))
-        if cleared_now:
-            _clear_session_planning_data(st)
-            _clear_browser_planning_data()
-
-        browser_saved = {} if cleared_now else (_read_browser_state() or {})
+        browser_saved = _read_browser_state() or {}
         live_saved = st.session_state.get(SESSION_STATE_KEY)
         if not isinstance(live_saved, dict):
-            live_saved = browser_saved if isinstance(browser_saved, dict) else {}
-            st.session_state[SESSION_STATE_KEY] = dict(live_saved)
+            live_saved = browser_saved
+        live_saved = _normalize_store(live_saved)
+        st.session_state[SESSION_STATE_KEY] = live_saved
 
         base = getattr(st, "_main", None)
         original_text_input = base.text_input if base is not None else st.text_input
@@ -171,21 +182,30 @@ def install(app_module) -> None:
         reset_version = int(st.session_state.get(RESET_VERSION_KEY, 0) or 0)
         captured = {
             "employee": str(live_saved.get("employee", "") or ""),
-            "year": live_saved.get("year"),
-            "month": live_saved.get("month"),
-            "days": live_saved.get("days", {}) if isinstance(live_saved.get("days", {}), dict) else {},
-            "general_note": str(live_saved.get("general_note", "") or ""),
+            "months": {
+                key: {
+                    "days": dict(value.get("days", {}) or {}),
+                    "general_note": str(value.get("general_note", "") or ""),
+                }
+                for key, value in live_saved.get("months", {}).items()
+                if isinstance(value, dict)
+            },
         }
         clear_button_rendered = False
 
+        def month_state(year: int, month: int) -> dict:
+            key = _month_key(year, month)
+            current = captured["months"].get(key)
+            if not isinstance(current, dict):
+                current = {"days": {}, "general_note": ""}
+                captured["months"][key] = current
+            if not isinstance(current.get("days"), dict):
+                current["days"] = {}
+            current["general_note"] = str(current.get("general_note", "") or "")
+            return current
+
         def commit_captured() -> None:
-            payload = {
-                "employee": str(captured.get("employee", "") or ""),
-                "year": captured.get("year"),
-                "month": captured.get("month"),
-                "days": dict(captured.get("days", {}) or {}),
-                "general_note": str(captured.get("general_note", "") or ""),
-            }
+            payload = _normalize_store(captured)
             st.session_state[SESSION_STATE_KEY] = payload
             _write_browser_state(payload)
 
@@ -201,11 +221,15 @@ def install(app_module) -> None:
 
         def private_text_area(label, *args, **kwargs):
             key = str(kwargs.get("key", ""))
-            if key.startswith("preferences_general_note_"):
-                if key not in st.session_state and captured["general_note"]:
-                    kwargs["value"] = captured["general_note"]
+            match = _NOTE_KEY_RE.match(key)
+            if match:
+                year = int(match.group(1))
+                month = int(match.group(2))
+                current = month_state(year, month)
+                if key not in st.session_state and current["general_note"]:
+                    kwargs["value"] = current["general_note"]
                 value = original_text_area(label, *args, **kwargs)
-                captured["general_note"] = str(value or "")
+                current["general_note"] = str(value or "")
                 commit_captured()
                 return value
             return original_text_area(label, *args, **kwargs)
@@ -244,8 +268,9 @@ def install(app_module) -> None:
                 year = int(parts[-2])
                 month = int(parts[-1])
             except Exception:
-                year = month = None
+                year = month = 0
 
+            current_month = month_state(year, month)
             table = data.copy()
             control_mask = table["יום"].astype(str) == CONTROL_ROW_LABEL if "יום" in table.columns else None
             if control_mask is not None:
@@ -253,20 +278,20 @@ def install(app_module) -> None:
             else:
                 real_mask = app_module.pd.Series([True] * len(table), index=table.index)
 
-            if year == captured.get("year") and month == captured.get("month"):
-                for idx, row in table[real_mask].iterrows():
-                    try:
-                        date_key = app_module.pd.Timestamp(row["תאריך"]).date().isoformat()
-                    except Exception:
-                        continue
-                    day = captured["days"].get(date_key)
-                    if not isinstance(day, dict):
-                        continue
-                    table.at[idx, "חופש"] = bool(day.get("vacation", False))
-                    table.at[idx, "חסימת תורנות מלאה"] = bool(day.get("full_block", day.get("blocked", False)))
-                    table.at[idx, "חסימת תורנות חצי"] = bool(day.get("half_block", False))
-                    table.at[idx, "מעוניין בתורנות"] = bool(day.get("wants_duty", False))
-                    table.at[idx, "הערה אישית"] = str(day.get("personal_note", day.get("note", "")) or "")
+            saved_days = current_month.get("days", {})
+            for idx, row in table[real_mask].iterrows():
+                try:
+                    date_key = app_module.pd.Timestamp(row["תאריך"]).date().isoformat()
+                except Exception:
+                    continue
+                day = saved_days.get(date_key)
+                if not isinstance(day, dict):
+                    continue
+                table.at[idx, "חופש"] = bool(day.get("vacation", False))
+                table.at[idx, "חסימת תורנות מלאה"] = bool(day.get("full_block", day.get("blocked", False)))
+                table.at[idx, "חסימת תורנות חצי"] = bool(day.get("half_block", False))
+                table.at[idx, "מעוניין בתורנות"] = bool(day.get("wants_duty", False))
+                table.at[idx, "הערה אישית"] = str(day.get("personal_note", day.get("note", "")) or "")
 
             pending_bulk = st.session_state.pop(PENDING_BULK_KEY, None)
             if isinstance(pending_bulk, dict):
@@ -274,12 +299,9 @@ def install(app_module) -> None:
                     column = str(pending_bulk.get("column", ""))
                     if column in BULK_COLUMNS and column in table.columns:
                         table.loc[real_mask, column] = bool(pending_bulk.get("value", False))
-                        captured["year"] = year
-                        captured["month"] = month
-                        captured["days"] = _rows_to_days(table[real_mask])
+                        current_month["days"] = _rows_to_days(table[real_mask])
                         commit_captured()
 
-            # The master row is purely derived from the actual day values.
             if control_mask is not None and bool(control_mask.any()):
                 control_index = table.index[control_mask][0]
                 for column in BULK_COLUMNS:
@@ -305,7 +327,6 @@ def install(app_module) -> None:
                 changes = _changed_cells(previous_rows, current_rows)
                 snapshots[actual_key] = current_rows
 
-                # Only an explicit newly changed cell in row 0 can trigger bulk.
                 for row_number, column, value in changes:
                     if row_number != 0 or column not in BULK_COLUMNS:
                         continue
@@ -328,18 +349,11 @@ def install(app_module) -> None:
                 edited_real_mask = app_module.pd.Series([True] * len(edited), index=edited.index)
 
             try:
-                days = _rows_to_days(edited[edited_real_mask])
+                current_month["days"] = _rows_to_days(edited[edited_real_mask])
             except Exception:
-                days = captured.get("days", {})
-
-            captured["year"] = year
-            captured["month"] = month
-            captured["days"] = days
+                pass
             commit_captured()
 
-            # Refresh the visual master only when an individual edit changes the
-            # all-selected status. The day data is already committed to session
-            # state, so this rerun cannot wipe the other selected days.
             editor_state = st.session_state.get(actual_key, {})
             current_rows = _normalize_edited_rows(
                 editor_state.get("edited_rows", {}) if isinstance(editor_state, dict) else {}
@@ -371,12 +385,14 @@ def install(app_module) -> None:
                 if st.button(
                     "נקה את כל הטבלה",
                     width="stretch",
-                    key=f"clear_all_preferences_table_{year}_{month}_v12",
+                    key=f"clear_all_preferences_table_{year}_{month}_v13",
                 ):
-                    _clear_browser_planning_data()
-                    _clear_session_planning_data(st)
+                    captured["months"].pop(_month_key(year, month), None)
+                    commit_captured()
+                    _clear_month_widget_state(st, year, month)
+                    st.session_state.pop(PENDING_BULK_KEY, None)
+                    st.session_state.pop(EDITOR_SNAPSHOTS_KEY, None)
                     st.session_state[RESET_VERSION_KEY] = reset_version + 1
-                    st.session_state[CLEAR_REQUEST_KEY] = True
                     st.rerun()
 
             return edited
