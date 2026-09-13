@@ -73,33 +73,59 @@ def _render_add_worker(st) -> None:
 
     with st.form("tool6_add_worker_form", clear_on_submit=False):
         st.markdown("### פרטים אישיים")
-        col1, col2 = st.columns(2)
-        with col1:
+
+        row1_col1, row1_col2 = st.columns(2)
+        with row1_col1:
             first_name = st.text_input("שם פרטי")
-            id_number = st.text_input("ת.ז")
-            address = st.text_input("כתובת")
-            phone = st.text_input("טלפון")
-            marital_status = st.selectbox("מצב משפחתי", MARITAL_STATUS_OPTIONS)
-            children = st.selectbox("מספר ילדים", CHILDREN_OPTIONS)
-        with col2:
+        with row1_col2:
             last_name = st.text_input("שם משפחה")
+
+        row2_col1, row2_col2 = st.columns(2)
+        with row2_col1:
+            id_number = st.text_input("ת.ז")
+        with row2_col2:
             birth_date = st.date_input("תאריך לידה", value=None, format="DD/MM/YYYY")
+
+        row3_col1, row3_col2 = st.columns(2)
+        with row3_col1:
+            address = st.text_input("כתובת")
+        with row3_col2:
             locality = st.text_input("יישוב מגורים")
+
+        row4_col1, row4_col2 = st.columns(2)
+        with row4_col1:
+            phone = st.text_input("טלפון")
+        with row4_col2:
             email = st.text_input("אימייל")
 
+        row5_col1, row5_col2 = st.columns(2)
+        with row5_col1:
+            marital_status = st.selectbox("מצב משפחתי", MARITAL_STATUS_OPTIONS)
+        with row5_col2:
+            children = st.selectbox("מספר ילדים", CHILDREN_OPTIONS)
+
         st.markdown("### פרטים מקצועיים")
-        col3, col4 = st.columns(2)
-        with col3:
+
+        row6_col1, row6_col2 = st.columns(2)
+        with row6_col1:
             track = st.selectbox("מסלול / התמחות", TRACK_OPTIONS)
+        with row6_col2:
+            status = st.selectbox("סטטוס", STATUS_OPTIONS)
+
+        row7_col1, row7_col2 = st.columns(2)
+        with row7_col1:
             eligibility = st.selectbox("כשירות תורנויות", ELIGIBILITY_OPTIONS)
+        with row7_col2:
+            basic_science_exemption = st.selectbox("פטור מדעי יסוד", YES_NO_OPTIONS)
+
+        row8_col1, row8_col2 = st.columns(2)
+        with row8_col1:
             department_start = st.date_input(
                 "תאריך תחילת פעילות במחלקה",
                 value=None,
                 format="DD/MM/YYYY",
             )
-        with col4:
-            status = st.selectbox("סטטוס", STATUS_OPTIONS)
-            basic_science_exemption = st.selectbox("פטור מדעי יסוד", YES_NO_OPTIONS)
+        with row8_col2:
             specialization_start = st.date_input(
                 "תאריך תחילת התמחות",
                 value=None,
