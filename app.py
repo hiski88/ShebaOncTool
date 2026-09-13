@@ -13,6 +13,7 @@ from google_calendar import handle_oauth_callback
 from month_selector_timezone_overrides import install as install_month_selector_timezone_overrides
 from preferences_output_overrides import install as install_preferences_output_overrides
 from preferences_privacy_overrides import install as install_preferences_privacy_overrides
+from rtl_table_overrides import install as install_rtl_table_overrides
 from schedule_layout_overrides import install as install_schedule_layout_overrides
 from special_days_engine import install as install_special_days_engine
 from system_role_labels_overrides import install as install_system_role_labels_overrides
@@ -20,6 +21,7 @@ from tool1_preferences_mvp_overrides import install as install_tool1_preferences
 from tool2_submissions_overrides import install as install_tool2_submissions_overrides
 from tool3_minimal_overrides import install as install_tool3_minimal_overrides
 from tool6_gantt_overrides import install as install_tool6_gantt_overrides
+from tool6_period_guard_overrides import install as install_tool6_period_guard_overrides
 from tool_navigation_v2 import install as install_tool_navigation_v2
 from ui_overrides import install as install_ui_overrides
 
@@ -41,6 +43,8 @@ def _calendar_reader(year: int, month: int):
 
 app_v2.render_calendar_reader = _calendar_reader
 install_ui_overrides(app_v2)
+# Read-only tables are rendered from right to left throughout the Hebrew UI.
+install_rtl_table_overrides(app_v2)
 # One central source/filter engine must be installed before Tools 1/2/3 so all
 # of them see the same holiday / special-day labels.
 install_special_days_engine(app_v2)
@@ -61,6 +65,9 @@ install_calendar_time_overrides(app_v2)
 # Keep WorkerPeriods as the exact-date source of truth and derive the 66-month
 # Workers overview automatically whenever Tool 6 data changes.
 install_tool6_gantt_overrides(app_v2)
+# Guard after the Gantt wrapper so duplicate checks happen before any write or
+# derived-month synchronization.
+install_tool6_period_guard_overrides(app_v2)
 # Normalize the legacy permission-admin role to its clearer UI label while
 # remaining backward compatible with already stored SystemUsers rows.
 install_system_role_labels_overrides(app_v2)
