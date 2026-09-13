@@ -28,6 +28,40 @@ def test_gantt_months_are_anchored_to_specialization_start():
     assert values == ["מחלקה", "מחקר", ""]
 
 
+def test_gantt_shows_framework_and_rotation_details():
+    values = build_gantt_values(
+        date(2026, 1, 1),
+        [
+            {
+                "period_type": "פנימית",
+                "framework": "פנימית ד",
+                "subunit": "קרדיולוגיה",
+                "start_date": date(2026, 1, 1),
+                "end_date": date(2026, 1, 31),
+            }
+        ],
+        month_count=1,
+    )
+    assert values == ["פנימית - פנימית ד - קרדיולוגיה"]
+
+
+def test_gantt_does_not_repeat_identical_hierarchy_values():
+    values = build_gantt_values(
+        date(2026, 1, 1),
+        [
+            {
+                "period_type": "מחקר",
+                "framework": "מחקר",
+                "subunit": "",
+                "start_date": date(2026, 1, 1),
+                "end_date": date(2026, 1, 31),
+            }
+        ],
+        month_count=1,
+    )
+    assert values == ["מחקר"]
+
+
 def test_gantt_combines_overlapping_period_types():
     values = build_gantt_values(
         date(2026, 1, 1),
