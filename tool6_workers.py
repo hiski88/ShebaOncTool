@@ -8,6 +8,7 @@ from google_sheets_submissions import _service
 
 
 WORKERS_SHEET = "Workers"
+SELECT_PLACEHOLDER = "בחר/י..."
 MARITAL_STATUS_OPTIONS = [
     "רווק/ה",
     "בזוגיות / ידוע/ה בציבור",
@@ -39,7 +40,7 @@ def _read_worker_rows(st) -> list[list[str]]:
     service, spreadsheet_id = _workers_service(st)
     response = service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id,
-        range=f"'{WORKERS_SHEET}'!A2:S500",
+        range=f"'{WORKERS_SHEET}'!A2:S",
         valueRenderOption="FORMATTED_VALUE",
     ).execute()
     return response.get("values", [])
@@ -68,9 +69,16 @@ def _append_worker(st, values: list[str]) -> None:
     ).execute()
 
 
+def _required_selectbox(st, label: str, options: list[str]):
+    return st.selectbox(label, [SELECT_PLACEHOLDER, *options])
+
+
 def _render_add_worker(st) -> None:
     st.subheader("הוספת עובד/ת")
-    st.caption("כל השדות במסך זה הם שדות חובה. מזהה העובד נוצר אוטומטית ואינו דורש הזנה.")
+    st.caption(
+        "כל השדות במסך זה, למעט הערה כללית, הם שדות חובה. "
+        "מזהה העובד נוצר אוטומטית ואינו דורש הזנה."
+    )
 
     today = date.today()
     earliest_birth_date = date(today.year - 70, 1, 1)
@@ -110,23 +118,23 @@ def _render_add_worker(st) -> None:
 
         row5_col1, row5_col2 = st.columns(2)
         with row5_col1:
-            marital_status = st.selectbox("מצב משפחתי", MARITAL_STATUS_OPTIONS)
+            marital_status = _required_selectbox(st, "מצב משפחתי", MARITAL_STATUS_OPTIONS)
         with row5_col2:
-            children = st.selectbox("מספר ילדים", CHILDREN_OPTIONS)
+            children = _required_selectbox(st, "מספר ילדים", CHILDREN_OPTIONS)
 
         st.markdown("### פרטים מקצועיים")
 
         row6_col1, row6_col2 = st.columns(2)
         with row6_col1:
-            track = st.selectbox("מסלול / התמחות", TRACK_OPTIONS)
+            track = _required_selectbox(st, "מסלול / התמחות", TRACK_OPTIONS)
         with row6_col2:
-            status = st.selectbox("סטטוס", STATUS_OPTIONS)
+            status = _required_selectbox(st, "סטטוס", STATUS_OPTIONS)
 
         row7_col1, row7_col2 = st.columns(2)
         with row7_col1:
-            eligibility = st.selectbox("כשירות תורנויות", ELIGIBILITY_OPTIONS)
+            eligibility = _required_selectbox(st, "כשירות תורנויות", ELIGIBILITY_OPTIONS)
         with row7_col2:
-            basic_science_exemption = st.selectbox("פטור מדעי יסוד", YES_NO_OPTIONS)
+            basic_science_exemption = _required_selectbox(st, "פטור מדעי יסוד", YES_NO_OPTIONS)
 
         row8_col1, row8_col2 = st.columns(2)
         with row8_col1:
@@ -142,7 +150,7 @@ def _render_add_worker(st) -> None:
                 format="DD/MM/YYYY",
             )
 
-        general_note = st.text_area("הערה כללית")
+        general_note = st.text_area("הערה כללית (אופציונלי)")
         submitted = st.form_submit_button("הוסף עובד/ת", type="primary", use_container_width=True)
 
     if not submitted:
@@ -156,9 +164,21 @@ def _render_add_worker(st) -> None:
         "יישוב מגורים": locality,
         "טלפון": phone,
         "אימייל": email,
-        "הערה כללית": general_note,
     }
     missing = [label for label, value in required_text.items() if not str(value or "").strip()]
+
+    required_selections = {
+        "מצב משפחתי": marital_status,
+        "מספר ילדים": children,
+        "מסלול / התמחות": track,
+        "סטטוס": status,
+        "כשירות תורנויות": eligibility,
+        "פטור מדעי יסוד": basic_science_exemption,
+    }
+    missing.extend(
+        label for label, value in required_selections.items() if value == SELECT_PLACEHOLDER
+    )
+
     if birth_date is None:
         missing.append("תאריך לידה")
     if department_start is None:
@@ -168,6 +188,14 @@ def _render_add_worker(st) -> None:
 
     if missing:
         st.error("יש למלא את כל שדות החובה: " + ", ".join(missing))
+        return
+
+    if department_start < birth_date:
+        st.error("תאריך תחילת הפעילות במחלקה לא יכול להיות מוקדם מתאריך הלידה.")
+        return
+
+    if specialization_start < birth_date:
+        st.error("תאריך תחילת ההתמחות לא יכול להיות מוקדם מתאריך הלידה.")
         return
 
     if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email.strip()):
