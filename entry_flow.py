@@ -1,21 +1,31 @@
 """Role-based entry flow for the oncology MedStaff prototype.
 
-The entry layer is deliberately separate from the scheduling tools:
-- employees identify themselves using their ID number and are mapped to Worker ID;
-- managers authenticate with the existing manager secret and then receive the full tool navigation;
-- the sidebar stays hidden until manager access is granted.
+Identity and authorization are intentionally separate from scheduling data:
+- employees identify with ID number, map to Worker ID and receive/resolve a SystemUser;
+- managers must exist in SystemUsers and also pass the shared manager secret;
+- the first permission administrator can be bootstrapped with the existing secret;
+- successful employee/manager entries and manager authentication failures are logged.
 """
 from __future__ import annotations
 
-import re
-
-from google_sheets_submissions import _service
+from system_users import (
+    MANAGER_ROLES,
+    MANAGER_USER_SESSION_KEY,
+    ROLE_ACCESS_ADMIN,
+    STATUS_ACTIVE,
+    ensure_employee_user,
+    find_worker_by_id_number,
+    log_access,
+    lookup_user_by_id,
+    manager_users_exist,
+    normalize_id_number,
+)
 
 
 MANAGER_PASSWORD_SECRET = "MANAGER_TOOLS_PASSWORD"
-WORKERS_SHEET = "Workers"
 ENTRY_MODE_KEY = "medstaff_entry_mode_v1"
 IDENTIFIED_WORKER_KEY = "medstaff_identified_worker_v1"
+IDENTIFIED_EMPLOYEE_USER_KEY = "medstaff_employee_system_user_v1"
 EMPLOYEE_LOOKUP_RESULT_KEY = "medstaff_employee_lookup_result_v1"
 
 
@@ -31,60 +41,13 @@ def _hide_sidebar(st) -> None:
     )
 
 
-def _normalize_id_number(value: object) -> str:
-    """Normalize an Israeli-style ID for lookup without making it the internal key."""
-    digits = re.sub(r"\D", "", str(value or ""))
-    if not digits:
-        return ""
-    if len(digits) <= 9:
-        return digits.zfill(9)
-    return digits
-
-
-def _read_workers(st) -> list[list[str]]:
-    service, spreadsheet_id, _ = _service(st)
-    response = service.spreadsheets().values().get(
-        spreadsheetId=spreadsheet_id,
-        range=f"'{WORKERS_SHEET}'!A2:S",
-        valueRenderOption="FORMATTED_VALUE",
-    ).execute()
-    return response.get("values", [])
-
-
-def _lookup_worker(st, id_number: str) -> dict[str, str] | None:
-    normalized = _normalize_id_number(id_number)
-    if len(normalized) != 9:
-        return None
-
-    matches: list[dict[str, str]] = []
-    for raw in _read_workers(st):
-        row = [str(item) for item in raw] + [""] * (19 - len(raw))
-        stored_id = _normalize_id_number(row[3])
-        if stored_id != normalized:
-            continue
-        first_name = row[1].strip()
-        last_name = row[2].strip()
-        matches.append(
-            {
-                "worker_id": row[0].strip(),
-                "first_name": first_name,
-                "last_name": last_name,
-                "full_name": " ".join(part for part in (first_name, last_name) if part).strip(),
-                "id_number": normalized,
-                "status": row[12].strip(),
-            }
-        )
-
-    if len(matches) > 1:
-        raise RuntimeError("נמצאו מספר רשומות עם אותה ת.ז. יש לפנות למנהל/ת המערכת.")
-    return matches[0] if matches else None
-
-
 def _clear_entry_state(st) -> None:
     for key in (
         ENTRY_MODE_KEY,
         IDENTIFIED_WORKER_KEY,
+        IDENTIFIED_EMPLOYEE_USER_KEY,
         EMPLOYEE_LOOKUP_RESULT_KEY,
+        MANAGER_USER_SESSION_KEY,
         "preferences_employee",
         "manager_tools_authenticated",
         "staff_tools_authenticated",
@@ -126,7 +89,7 @@ def _render_welcome(st) -> None:
         with manager_col:
             with st.container(border=True):
                 st.markdown("#### מנהל/ת מערכת")
-                st.caption("תכנון, סידור וניהול עובדים.")
+                st.caption("תכנון, סידור, ניהול עובדים והרשאות.")
                 if st.button("כניסת מנהל/ת", width="stretch", key="entry_manager_v1"):
                     st.session_state[ENTRY_MODE_KEY] = "manager"
                     st.rerun()
@@ -154,25 +117,46 @@ def _render_employee_login(st) -> None:
             submitted = st.form_submit_button("המשך", type="primary", width="stretch")
 
         if submitted:
-            normalized = _normalize_id_number(entered_id)
+            normalized = normalize_id_number(entered_id)
             if len(normalized) != 9:
                 st.session_state[EMPLOYEE_LOOKUP_RESULT_KEY] = "invalid"
             else:
                 try:
-                    worker = _lookup_worker(st, normalized)
+                    worker = find_worker_by_id_number(st, normalized)
                 except Exception as exc:
                     st.error(f"לא ניתן לבדוק את פרטי העובד/ת: {exc}")
                     return
 
                 if worker is None:
                     st.session_state[EMPLOYEE_LOOKUP_RESULT_KEY] = "not_found"
-                elif worker.get("status") != "פעיל":
+                elif worker.get("status") != STATUS_ACTIVE:
                     st.session_state[EMPLOYEE_LOOKUP_RESULT_KEY] = "inactive"
                 else:
-                    st.session_state[IDENTIFIED_WORKER_KEY] = worker
-                    st.session_state["preferences_employee"] = worker["full_name"]
-                    st.session_state[EMPLOYEE_LOOKUP_RESULT_KEY] = "found"
-                    st.rerun()
+                    try:
+                        system_user = ensure_employee_user(st, worker)
+                    except Exception as exc:
+                        st.error(f"לא ניתן לאמת את הרשאת הכניסה: {exc}")
+                        return
+
+                    if system_user.get("status") != STATUS_ACTIVE:
+                        st.session_state[EMPLOYEE_LOOKUP_RESULT_KEY] = "access_inactive"
+                    else:
+                        try:
+                            log_access(
+                                st,
+                                user=system_user,
+                                entry_type="עובד/ת",
+                                result="הצלחה",
+                            )
+                        except Exception as exc:
+                            st.error(f"לא ניתן לתעד את הכניסה למערכת: {exc}")
+                            return
+
+                        st.session_state[IDENTIFIED_WORKER_KEY] = worker
+                        st.session_state[IDENTIFIED_EMPLOYEE_USER_KEY] = system_user
+                        st.session_state["preferences_employee"] = worker["full_name"]
+                        st.session_state[EMPLOYEE_LOOKUP_RESULT_KEY] = "found"
+                        st.rerun()
 
         result = st.session_state.get(EMPLOYEE_LOOKUP_RESULT_KEY)
         if result == "invalid":
@@ -183,6 +167,8 @@ def _render_employee_login(st) -> None:
                 st.info("טופס הצטרפות לעובד/ת חדש/ה יתווסף בשלב הבא.")
         elif result == "inactive":
             st.warning("העובד/ת נמצא/ה במערכת אך אינו/ה מסומן/ת כפעיל/ה. יש לפנות למנהל/ת המערכת.")
+        elif result == "access_inactive":
+            st.warning("חשבון המשתמש אינו פעיל. יש לפנות למנהל/ת המערכת.")
 
 
 def _render_employee_tool(st, app_module) -> None:
@@ -205,6 +191,20 @@ def _render_employee_tool(st, app_module) -> None:
     app_module.tool_preferences()
 
 
+def _manager_secret(st) -> str:
+    try:
+        return str(st.secrets.get(MANAGER_PASSWORD_SECRET, "") or "")
+    except Exception as exc:
+        raise RuntimeError(f"לא ניתן לקרוא את הגדרות הגישה: {exc}") from exc
+
+
+def _set_manager_session(st, user: dict[str, str]) -> None:
+    st.session_state[MANAGER_USER_SESSION_KEY] = user
+    st.session_state["manager_tools_authenticated"] = True
+    st.session_state["staff_tools_authenticated"] = True
+    st.session_state["tool2_planner_authenticated"] = True
+
+
 def _render_manager_login(st) -> None:
     _hide_sidebar(st)
     _render_brand(st)
@@ -217,31 +217,110 @@ def _render_manager_login(st) -> None:
 
         st.markdown("### כניסת מנהל/ת מערכת")
         try:
-            expected = str(st.secrets.get(MANAGER_PASSWORD_SECRET, "") or "")
+            expected = _manager_secret(st)
         except Exception as exc:
-            st.error(f"לא ניתן לקרוא את הגדרות הגישה: {exc}")
+            st.error(str(exc))
             return
 
         if not expected:
             st.error("סיסמת מנהל/ת המערכת אינה מוגדרת.")
             return
 
-        with st.form("manager_entry_form_v1"):
-            password = st.text_input("סיסמה", type="password")
-            submitted = st.form_submit_button("כניסה", type="primary", width="stretch")
+        try:
+            has_defined_managers = manager_users_exist(st)
+        except Exception as exc:
+            st.error(f"לא ניתן לקרוא את משתמשי המערכת: {exc}")
+            return
 
-        if submitted:
+        if not has_defined_managers:
+            st.info(
+                "טרם הוגדר מנהל/ת מערכת ב-SystemUsers. הכניסה הראשונית מתבצעת באמצעות "
+                "סיסמת המנהל הקיימת, ולאחר מכן יש להגדיר מנהל/ת הרשאות בכלי 7."
+            )
+            with st.form("manager_bootstrap_form_v1"):
+                password = st.text_input("סיסמת מנהל/ת", type="password")
+                submitted = st.form_submit_button("כניסה ראשונית", type="primary", width="stretch")
+
+            if not submitted:
+                return
+
+            bootstrap_user = {
+                "user_id": "BOOTSTRAP",
+                "display_name": "הקמה ראשונית",
+                "role": ROLE_ACCESS_ADMIN,
+                "worker_id": "",
+                "status": STATUS_ACTIVE,
+                "bootstrap": True,
+            }
             if password != expected:
+                try:
+                    log_access(st, user=bootstrap_user, entry_type="מנהל/ת", result="כשל אימות")
+                except Exception:
+                    pass
                 st.error("סיסמה שגויה.")
                 return
-            st.session_state["manager_tools_authenticated"] = True
-            st.session_state["staff_tools_authenticated"] = True
-            st.session_state["tool2_planner_authenticated"] = True
+
+            try:
+                log_access(st, user=bootstrap_user, entry_type="מנהל/ת", result="הצלחה - הקמה ראשונית")
+            except Exception as exc:
+                st.error(f"לא ניתן לתעד את הכניסה למערכת: {exc}")
+                return
+            _set_manager_session(st, bootstrap_user)
             st.rerun()
+
+        with st.form("manager_entry_form_v2"):
+            id_number = st.text_input("תעודת זהות", placeholder="9 ספרות", max_chars=12)
+            password = st.text_input("סיסמת מנהל/ת", type="password")
+            submitted = st.form_submit_button("כניסה", type="primary", width="stretch")
+
+        if not submitted:
+            return
+
+        normalized = normalize_id_number(id_number)
+        user = None
+        if len(normalized) == 9:
+            try:
+                user = lookup_user_by_id(st, normalized)
+            except Exception as exc:
+                st.error(f"לא ניתן לבדוק את הרשאת המשתמש: {exc}")
+                return
+
+        if user is None:
+            try:
+                log_access(st, user=None, entry_type="מנהל/ת", result="משתמש לא נמצא")
+            except Exception:
+                pass
+            st.error("פרטי הכניסה אינם תקינים.")
+            return
+
+        if user.get("status") != STATUS_ACTIVE or user.get("role") not in MANAGER_ROLES:
+            try:
+                log_access(st, user=user, entry_type="מנהל/ת", result="אין הרשאת מנהל פעילה")
+            except Exception:
+                pass
+            st.error("למשתמש/ת אין הרשאת מנהל פעילה.")
+            return
+
+        if password != expected:
+            try:
+                log_access(st, user=user, entry_type="מנהל/ת", result="כשל אימות")
+            except Exception:
+                pass
+            st.error("סיסמה שגויה.")
+            return
+
+        try:
+            log_access(st, user=user, entry_type="מנהל/ת", result="הצלחה")
+        except Exception as exc:
+            st.error(f"לא ניתן לתעד את הכניסה למערכת: {exc}")
+            return
+
+        _set_manager_session(st, user)
+        st.rerun()
 
 
 def install(app_module) -> None:
-    """Wrap the already-installed tool navigation with the role-based entry gate."""
+    """Wrap the installed tool navigation with identity and authorization gates."""
     if getattr(app_module, "_entry_flow_installed", False):
         return
 
@@ -259,10 +338,19 @@ def install(app_module) -> None:
             return
 
         if mode == "manager":
-            if not st.session_state.get("manager_tools_authenticated", False):
+            manager_user = st.session_state.get(MANAGER_USER_SESSION_KEY)
+            if (
+                not st.session_state.get("manager_tools_authenticated", False)
+                or not isinstance(manager_user, dict)
+                or not manager_user.get("user_id")
+            ):
+                st.session_state.pop("manager_tools_authenticated", None)
                 _render_manager_login(st)
                 return
 
+            st.sidebar.caption(
+                f"מחובר/ת: {manager_user.get('display_name', '')} | {manager_user.get('role', '')}"
+            )
             if st.sidebar.button("יציאה / החלפת מצב", width="stretch", key="manager_logout_v1"):
                 _clear_entry_state(st)
                 st.rerun()
