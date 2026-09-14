@@ -13,10 +13,11 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from google_sheets_submissions import _service
-from system_users import find_worker_by_id_number, normalize_id_number
+from system_users import find_worker_by_id_number, log_audit, normalize_id_number
 
 
 REGISTRATIONS_SHEET = "WorkerRegistrations"
+WORKERS_SHEET = "Workers"
 STATUS_PENDING = "ממתין לאישור"
 STATUS_APPROVED = "מאושר"
 STATUS_REJECTED = "נדחה"
@@ -58,6 +59,28 @@ def _read_registration_rows(st) -> list[list[str]]:
     return response.get("values", [])
 
 
+def _read_worker_rows(st) -> list[list[str]]:
+    service, spreadsheet_id = _registrations_service(st)
+    response = service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=f"'{WORKERS_SHEET}'!A2:S",
+        valueRenderOption="FORMATTED_VALUE",
+    ).execute()
+    return response.get("values", [])
+
+
+def _next_worker_id(rows: list[list[str]]) -> str:
+    highest = 0
+    for row in rows:
+        if not row:
+            continue
+        value = str(row[0]).strip().upper()
+        match = re.fullmatch(r"W(\d+)", value)
+        if match:
+            highest = max(highest, int(match.group(1)))
+    return f"W{highest + 1:04d}"
+
+
 def registration_records(st) -> list[dict[str, str]]:
     records: list[dict[str, str]] = []
     for offset, raw in enumerate(_read_registration_rows(st), start=2):
@@ -93,6 +116,18 @@ def latest_registration_by_id(st, id_number: str) -> dict[str, str] | None:
     normalized = normalize_id_number(id_number)
     matches = [item for item in registration_records(st) if item.get("id_number") == normalized]
     return matches[-1] if matches else None
+
+
+def get_registration(st, registration_id: str) -> dict[str, str] | None:
+    wanted = str(registration_id or "").strip()
+    return next(
+        (item for item in registration_records(st) if item.get("registration_id") == wanted),
+        None,
+    )
+
+
+def pending_registrations(st) -> list[dict[str, str]]:
+    return [item for item in registration_records(st) if item.get("status") == STATUS_PENDING]
 
 
 def validate_registration_fields(
@@ -209,3 +244,153 @@ def submit_registration(
         "submitted_at": now,
         "worker_id": "",
     }
+
+
+def _update_registration_review(
+    st,
+    registration: dict[str, str],
+    *,
+    status: str,
+    reviewed_by: str,
+    manager_note: str,
+    worker_id: str = "",
+) -> None:
+    if status not in REGISTRATION_STATUSES:
+        raise ValueError("סטטוס ההרשמה אינו תקין.")
+    row_number = int(registration["row_number"])
+    values = [
+        registration["registration_id"],
+        status,
+        registration["first_name"],
+        registration["last_name"],
+        registration["id_number"],
+        registration["birth_date"],
+        registration["address"],
+        registration["locality"],
+        registration["phone"],
+        registration["email"],
+        registration["marital_status"],
+        registration["children"],
+        registration["submitted_at"],
+        _now_text(),
+        str(reviewed_by or "").strip(),
+        str(manager_note or "").strip(),
+        str(worker_id or "").strip(),
+    ]
+    service, spreadsheet_id = _registrations_service(st)
+    service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id,
+        range=f"'{REGISTRATIONS_SHEET}'!A{row_number}:Q{row_number}",
+        valueInputOption="RAW",
+        body={"values": [values]},
+    ).execute()
+
+
+def approve_registration(
+    st,
+    *,
+    registration_id: str,
+    actor_user_id: str,
+    track: str,
+    status: str,
+    eligibility: str,
+    basic_science_exemption: str,
+    department_start: date,
+    specialization_start: date,
+    general_note: str = "",
+    manager_note: str = "",
+) -> str:
+    registration = get_registration(st, registration_id)
+    if registration is None:
+        raise ValueError("בקשת ההצטרפות לא נמצאה.")
+    if registration.get("status") != STATUS_PENDING:
+        raise ValueError("בקשת ההצטרפות כבר טופלה.")
+    if not all((str(track).strip(), str(status).strip(), str(eligibility).strip(), str(basic_science_exemption).strip())):
+        raise ValueError("יש להשלים את כל הפרטים המקצועיים.")
+    if department_start is None or specialization_start is None:
+        raise ValueError("יש להשלים את תאריכי הפעילות וההתמחות.")
+
+    existing_worker = find_worker_by_id_number(st, registration["id_number"])
+    if existing_worker is not None:
+        worker_id = str(existing_worker.get("worker_id", "") or "").strip()
+        if not worker_id:
+            raise RuntimeError("נמצא עובד קיים ללא Worker ID תקין.")
+    else:
+        worker_rows = _read_worker_rows(st)
+        worker_id = _next_worker_id(worker_rows)
+        worker_values = [
+            worker_id,
+            registration["first_name"],
+            registration["last_name"],
+            registration["id_number"],
+            registration["birth_date"],
+            registration["address"],
+            registration["locality"],
+            registration["phone"],
+            registration["email"],
+            registration["marital_status"],
+            registration["children"],
+            str(track).strip(),
+            str(status).strip(),
+            str(eligibility).strip(),
+            str(basic_science_exemption).strip(),
+            department_start.strftime("%d/%m/%Y"),
+            "",
+            str(general_note or "").strip(),
+            specialization_start.strftime("%d/%m/%Y"),
+        ]
+        service, spreadsheet_id = _registrations_service(st)
+        service.spreadsheets().values().append(
+            spreadsheetId=spreadsheet_id,
+            range=f"'{WORKERS_SHEET}'!A:S",
+            valueInputOption="USER_ENTERED",
+            insertDataOption="OVERWRITE",
+            body={"values": [worker_values]},
+        ).execute()
+
+    _update_registration_review(
+        st,
+        registration,
+        status=STATUS_APPROVED,
+        reviewed_by=actor_user_id,
+        manager_note=manager_note,
+        worker_id=worker_id,
+    )
+    log_audit(
+        st,
+        actor_user_id=actor_user_id,
+        action="אישור הרשמת עובד/ת",
+        target_type="WorkerRegistration",
+        target_id=registration["registration_id"],
+        details=f"Worker ID: {worker_id}",
+    )
+    return worker_id
+
+
+def reject_registration(
+    st,
+    *,
+    registration_id: str,
+    actor_user_id: str,
+    manager_note: str = "",
+) -> None:
+    registration = get_registration(st, registration_id)
+    if registration is None:
+        raise ValueError("בקשת ההצטרפות לא נמצאה.")
+    if registration.get("status") != STATUS_PENDING:
+        raise ValueError("בקשת ההצטרפות כבר טופלה.")
+    _update_registration_review(
+        st,
+        registration,
+        status=STATUS_REJECTED,
+        reviewed_by=actor_user_id,
+        manager_note=manager_note,
+    )
+    log_audit(
+        st,
+        actor_user_id=actor_user_id,
+        action="דחיית הרשמת עובד/ת",
+        target_type="WorkerRegistration",
+        target_id=registration["registration_id"],
+        details=str(manager_note or "").strip(),
+    )
