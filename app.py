@@ -23,6 +23,7 @@ from tool1_preferences_mvp_overrides import install as install_tool1_preferences
 from tool2_roster_overrides import install as install_tool2_roster_overrides
 from tool2_submissions_overrides import install as install_tool2_submissions_overrides
 from tool3_minimal_overrides import install as install_tool3_minimal_overrides
+from tool4_central_schedule_overrides import install as install_tool4_central_schedule_overrides
 from tool6_gantt_overrides import install as install_tool6_gantt_overrides
 from tool6_period_guard_overrides import install as install_tool6_period_guard_overrides
 from tool6_registration_overrides import install as install_tool6_registration_overrides
@@ -70,7 +71,11 @@ install_tool2_roster_overrides(app_v2)
 # newer layout with a holiday/special-day column before it infers names or
 # parses duties.
 install_schedule_layout_overrides(app_v2)
+# Tool 4 starts from the existing parser/event logic, then swaps manual upload
+# for the latest central final schedule. The time wrapper must be installed last
+# so users can still adjust duty hours for the centrally loaded schedule.
 install_tool3_minimal_overrides(app_v2)
+install_tool4_central_schedule_overrides(app_v2)
 install_calendar_time_overrides(app_v2)
 # Extend Tool 6 with manager review before the Gantt wrapper captures its
 # renderer, so the initial Gantt sync still runs for every Tool 6 screen.
