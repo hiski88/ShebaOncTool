@@ -2,6 +2,7 @@ from datetime import date
 
 from worker_registrations import (
     STATUS_PENDING,
+    _next_worker_id,
     validate_registration_fields,
 )
 
@@ -39,3 +40,8 @@ def test_self_registration_requires_personal_fields():
 
 def test_pending_status_label_is_stable():
     assert STATUS_PENDING == "ממתין לאישור"
+
+
+def test_worker_id_is_assigned_only_at_approval_from_existing_roster():
+    rows = [["W0001"], ["W0010"], ["legacy"], []]
+    assert _next_worker_id(rows) == "W0011"
