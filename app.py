@@ -20,6 +20,7 @@ from special_days_engine import install as install_special_days_engine
 from submission_identity_overrides import install as install_submission_identity_overrides
 from system_role_labels_overrides import install as install_system_role_labels_overrides
 from tool1_preferences_mvp_overrides import install as install_tool1_preferences_mvp_overrides
+from tool2_roster_overrides import install as install_tool2_roster_overrides
 from tool2_submissions_overrides import install as install_tool2_submissions_overrides
 from tool3_minimal_overrides import install as install_tool3_minimal_overrides
 from tool6_gantt_overrides import install as install_tool6_gantt_overrides
@@ -62,6 +63,9 @@ install_submission_identity_overrides(app_v2)
 install_preferences_output_overrides(app_v2)
 install_preferences_privacy_overrides(app_v2)
 install_tool2_submissions_overrides(app_v2)
+# Workers is the source of truth for Tool 2; monthly submissions enrich the
+# active roster rather than defining who exists in the planning population.
+install_tool2_roster_overrides(app_v2)
 # The calendar tool must understand both the legacy schedule layout and the
 # newer layout with a holiday/special-day column before it infers names or
 # parses duties.
