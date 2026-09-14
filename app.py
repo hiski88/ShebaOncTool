@@ -17,6 +17,7 @@ from preferences_privacy_overrides import install as install_preferences_privacy
 from rtl_table_overrides import install as install_rtl_table_overrides
 from schedule_layout_overrides import install as install_schedule_layout_overrides
 from special_days_engine import install as install_special_days_engine
+from submission_identity_overrides import install as install_submission_identity_overrides
 from system_role_labels_overrides import install as install_system_role_labels_overrides
 from tool1_preferences_mvp_overrides import install as install_tool1_preferences_mvp_overrides
 from tool2_submissions_overrides import install as install_tool2_submissions_overrides
@@ -55,6 +56,9 @@ install_month_selector_timezone_overrides(app_v2)
 # Install the expanded Tool 1 editor first. Output and private-persistence
 # wrappers then capture the new fields without changing the underlying model.
 install_tool1_preferences_mvp_overrides(app_v2)
+# Attach stable Worker ID to new submissions before Tool 1 output and Tool 2
+# capture the submission helpers imported from google_sheets_submissions.
+install_submission_identity_overrides(app_v2)
 install_preferences_output_overrides(app_v2)
 install_preferences_privacy_overrides(app_v2)
 install_tool2_submissions_overrides(app_v2)
