@@ -8,6 +8,7 @@ install_calendar_event_overrides()
 import app_v2
 from calendar_reader_v2 import render_calendar_reader as render_calendar_reader_v2
 from calendar_time_overrides import install as install_calendar_time_overrides
+from employee_registration_overrides import install as install_employee_registration_overrides
 from entry_flow import install as install_entry_flow
 from google_calendar import handle_oauth_callback
 from month_selector_timezone_overrides import install as install_month_selector_timezone_overrides
@@ -71,8 +72,9 @@ install_tool6_period_guard_overrides(app_v2)
 # Normalize the legacy permission-admin role to its clearer UI label while
 # remaining backward compatible with already stored SystemUsers rows.
 install_system_role_labels_overrides(app_v2)
-# Install tool navigation first, then wrap it with the role-based entry screen.
-# This keeps the sidebar hidden until manager authentication succeeds.
+# Install tool navigation first. Then extend employee identification with
+# self-registration before entry_flow captures the final login renderer.
 install_tool_navigation_v2(app_v2)
+install_employee_registration_overrides(app_v2)
 install_entry_flow(app_v2)
 app_v2.main()
