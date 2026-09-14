@@ -23,6 +23,7 @@ from tool2_submissions_overrides import install as install_tool2_submissions_ove
 from tool3_minimal_overrides import install as install_tool3_minimal_overrides
 from tool6_gantt_overrides import install as install_tool6_gantt_overrides
 from tool6_period_guard_overrides import install as install_tool6_period_guard_overrides
+from tool6_registration_overrides import install as install_tool6_registration_overrides
 from tool_navigation_v2 import install as install_tool_navigation_v2
 from ui_overrides import install as install_ui_overrides
 
@@ -63,6 +64,9 @@ install_tool2_submissions_overrides(app_v2)
 install_schedule_layout_overrides(app_v2)
 install_tool3_minimal_overrides(app_v2)
 install_calendar_time_overrides(app_v2)
+# Extend Tool 6 with manager review before the Gantt wrapper captures its
+# renderer, so the initial Gantt sync still runs for every Tool 6 screen.
+install_tool6_registration_overrides(app_v2)
 # Keep WorkerPeriods as the exact-date source of truth and derive the 66-month
 # Workers overview automatically whenever Tool 6 data changes.
 install_tool6_gantt_overrides(app_v2)
