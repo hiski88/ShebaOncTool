@@ -8,18 +8,43 @@ from tool3_minimal_overrides import _calendar_candidate_events, _session_calenda
 IDENTIFIED_WORKER_SESSION_KEY = "medstaff_identified_worker_v1"
 
 
-def _default_employee_index(st, names: list[str]) -> int:
+def _normalize_name(value: object) -> str:
+    return " ".join(str(value or "").strip().split()).casefold()
+
+
+def _identified_employee_name(st, names: list[str]) -> str | None:
+    """Resolve an identified employee to exactly one schedule name.
+
+    Employee mode must never fall back to another person's name. Managers do
+    not carry IDENTIFIED_WORKER_SESSION_KEY and therefore keep the normal
+    employee selector below.
+    """
     worker = st.session_state.get(IDENTIFIED_WORKER_SESSION_KEY)
     if not isinstance(worker, dict):
-        return 0
-    full_name = str(worker.get("full_name", "") or "").strip()
-    first_name = str(worker.get("first_name", "") or "").strip()
-    if full_name in names:
-        return names.index(full_name)
+        return None
+
+    normalized_names = [(_normalize_name(name), name) for name in names]
+    full_name = _normalize_name(worker.get("full_name", ""))
+    first_name = _normalize_name(worker.get("first_name", ""))
+
+    if full_name:
+        exact_full = [name for normalized, name in normalized_names if normalized == full_name]
+        if len(exact_full) == 1:
+            return exact_full[0]
+
     if first_name:
-        first_matches = [index for index, name in enumerate(names) if str(name).strip() == first_name]
-        if len(first_matches) == 1:
-            return first_matches[0]
+        exact_first = [name for normalized, name in normalized_names if normalized == first_name]
+        if len(exact_first) == 1:
+            return exact_first[0]
+
+    return ""
+
+
+def _default_employee_index(st, names: list[str]) -> int:
+    """Backward-compatible manager default; employee mode is resolved separately."""
+    resolved = _identified_employee_name(st, names)
+    if resolved:
+        return names.index(resolved)
     return 0
 
 
@@ -71,12 +96,23 @@ def install(app_module) -> None:
             )
             return
 
-        employee = st.selectbox(
-            "בחירת עובד/ת",
-            names,
-            index=_default_employee_index(st, names),
-            key=f"calendar_employee_{year}_{month}_{version}",
-        )
+        identified_worker = st.session_state.get(IDENTIFIED_WORKER_SESSION_KEY)
+        if isinstance(identified_worker, dict):
+            employee = _identified_employee_name(st, names)
+            if not employee:
+                st.error(
+                    "לא ניתן להתאים באופן אמין את המשתמש/ת המחובר/ת לשם בסידור הסופי. "
+                    "מטעמי פרטיות לא יוצגו נתונים של עובדים אחרים. יש לפנות למנהל/ת המערכת."
+                )
+                return
+            st.caption(f"הזימונים מוצגים עבור: {employee}")
+        else:
+            employee = st.selectbox(
+                "בחירת עובד/ת",
+                names,
+                index=0,
+                key=f"calendar_employee_{year}_{month}_{version}",
+            )
 
         try:
             records = app_module.parse_schedule(workbook, config, names)
