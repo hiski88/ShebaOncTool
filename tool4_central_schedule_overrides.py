@@ -12,6 +12,7 @@ Temporary uploads are never persisted to Google Drive or the schedule index.
 from __future__ import annotations
 
 from final_schedule_reader import download_final_schedule, list_final_schedules
+from schedule_parser import parse_calendar_schedule
 from tool3_minimal_overrides import _calendar_candidate_events, _session_calendar_config
 
 
@@ -185,9 +186,9 @@ def install(app_module) -> None:
             display_employee = employee
 
         try:
-            records = app_module.parse_schedule(workbook, config, names)
+            records = parse_calendar_schedule(workbook, config, names)
         except Exception as exc:
-            st.error(f"פענוח הלו״ז נכשל: {exc}")
+            st.error(f"פענוח אירועי היומן נכשל: {exc}")
             return
 
         candidate_records, events, event_config = _calendar_candidate_events(
