@@ -94,7 +94,7 @@ def install(app_module) -> None:
                 "1. הזנת העדפות",
                 "2. מתכנן",
                 "3. לו״ז חודשי",
-                "4. יצירת זימונים",
+                "4. יצירת זימון ליומן",
                 "5. נתונים היסטוריים והוגנות",
                 "6. ניהול עובדים",
                 "7. משתמשים והרשאות",
@@ -130,7 +130,7 @@ def install(app_module) -> None:
             tool_final_schedule_upload()
             return
 
-        if tool == "4. יצירת זימונים":
+        if tool == "4. יצירת זימון ליומן":
             if not _password_granted(
                 st,
                 secret_name=STAFF_PASSWORD_SECRET,
