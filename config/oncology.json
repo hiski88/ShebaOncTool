@@ -374,7 +374,8 @@
     "absence_other": "היעדרויות / אחר",
     "sick_leave": "מחלה",
     "radiation": "קרינה",
-    "personal_day": "ת\"ש"
+    "personal_day": "ת\"ש",
+    "friday_duty_rest": "מנוחה עבור תורנות שישי"
   },
   "event_defaults": {
     "department_regular": {
@@ -511,6 +512,10 @@
     "personal_day": {
       "all_day": true,
       "create": false
+    },
+    "friday_duty_rest": {
+      "all_day": true,
+      "create": true
     }
   },
   "staffing_rules": {
@@ -553,7 +558,6 @@
       }
     ],
     "non_work_codes": [
-      "after_duty",
       "vacation",
       "absence",
       "sick_leave",
@@ -561,6 +565,10 @@
       "research",
       "study_day",
       "shahar_program"
-    ]
+    ],
+    "rest_marker_codes": [
+      "after_duty"
+    ],
+    "friday_rest_max_days": 14
   }
 }
