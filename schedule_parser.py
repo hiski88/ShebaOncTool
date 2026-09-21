@@ -787,8 +787,32 @@ def parse_calendar_schedule(
     records: list[dict[str, Any]] = []
     seen: set[tuple[Any, ...]] = set()
 
+    configured_sources = list(config.get("schedule", {}).get("columns", []))
+    header_candidates = _source_column_candidates(sheet, config)
+
     for row_index, current in rows:
-        holiday = important_day_name(current)
+        holiday = important_day_name(current, config.get("special_days", {}))
+        day_working_names: set[str] = set()
+
+        # Determine who is actually assigned to work somewhere that day.
+        # Any non-status source counts as work. A struck name counts as work
+        # only when its trailing marker explicitly points to another task/station.
+        for source in configured_sources:
+            if source.get("kind") == "status":
+                continue
+            col = _resolved_source_column(source, sheet, config, header_candidates)
+            if col >= sheet.ncols:
+                continue
+            work_cell = sheet.cell(row_index, col)
+            if not work_cell.text:
+                continue
+            for occurrence in _find_occurrences(work_cell, employee_names):
+                if not occurrence.struck:
+                    day_working_names.add(occurrence.name)
+                    continue
+                aliases = _aliases_in_text(occurrence.segment_after, config)
+                if any(alias.get("kind") == "task" for alias in aliases):
+                    day_working_names.add(occurrence.name)
 
         # 1) Explicit duty columns only.
         for spec, col in duty_columns:
@@ -891,6 +915,47 @@ def parse_calendar_schedule(
                             "calendar_kind": "non_work",
                         }
                     )
+
+        # 3) Holiday / holiday-eve vacation inference.
+        # Chol Hamoed is intentionally excluded: it is a normal working day
+        # unless the roster says otherwise.
+        holiday_or_eve = bool(holiday) and "חול המועד" not in holiday
+        if holiday_or_eve:
+            explicit_non_work_names = {
+                str(record["employee"])
+                for record in records
+                if record.get("date") == current
+                and record.get("calendar_kind") == "non_work"
+            }
+            for employee in employee_names:
+                if employee in day_working_names or employee in explicit_non_work_names:
+                    continue
+                code = "vacation"
+                label = str(task_labels.get(code, "חופש"))
+                key = (current, employee, code, holiday)
+                if key in seen:
+                    continue
+                seen.add(key)
+                records.append(
+                    {
+                        "date": current,
+                        "day": hebrew_weekday(current),
+                        "holiday": holiday,
+                        "employee": employee,
+                        "record_type": "task",
+                        "task_code": code,
+                        "task_label": label,
+                        "subtype": holiday,
+                        "source_code": "inferred_holiday_vacation",
+                        "source_label": "חופש בחג / ערב חג",
+                        "source_kind": "status",
+                        "slot": 1,
+                        "source_cell": "",
+                        "raw_text": "",
+                        "struck": False,
+                        "calendar_kind": "holiday_vacation",
+                    }
+                )
 
     columns = [
         "date", "day", "holiday", "employee", "record_type", "task_code",
