@@ -267,8 +267,24 @@ def _holiday_column_index(config: Mapping[str, Any]) -> int | None:
         return None
 
 
-def _effective_column(index: int, config: Mapping[str, Any], sheet: SheetData) -> int:
-    return index + _schedule_column_offset(config, sheet)
+def _effective_column(
+    index: int,
+    config: Mapping[str, Any] | bool | None = None,
+    sheet: SheetData | None = None,
+) -> int:
+    """Resolve a configured schedule column without content-based guessing.
+
+    The optional arguments keep compatibility with already-loaded callers that
+    used the previous two-argument signature. Legacy boolean values are ignored
+    deliberately so they cannot reintroduce the erroneous automatic shift.
+    """
+    if isinstance(config, Mapping):
+        schedule_config = config.get("schedule", {})
+        try:
+            return index + int(schedule_config.get("column_offset", 0))
+        except (TypeError, ValueError):
+            return index
+    return index
 
 
 def schedule_rows(sheet: SheetData, config: Mapping[str, Any]) -> list[tuple[int, date]]:
