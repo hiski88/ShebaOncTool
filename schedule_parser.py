@@ -768,9 +768,14 @@ def parse_calendar_schedule(
         str(code)
         for code in calendar_cfg.get(
             "non_work_codes",
-            ["after_duty", "vacation", "absence", "sick_leave", "research", "study_day"],
+            ["vacation", "absence", "sick_leave", "research", "study_day"],
         )
     }
+    rest_marker_codes = {
+        str(code)
+        for code in calendar_cfg.get("rest_marker_codes", ["after_duty"])
+    }
+    friday_rest_max_days = int(calendar_cfg.get("friday_rest_max_days", 14) or 14)
 
     duty_specs = list(calendar_cfg.get("duty_columns", []))
     duty_columns: list[tuple[dict[str, Any], int]] = []
@@ -786,9 +791,16 @@ def parse_calendar_schedule(
 
     records: list[dict[str, Any]] = []
     seen: set[tuple[Any, ...]] = set()
+    rest_markers: list[dict[str, Any]] = []
+    rest_marker_seen: set[tuple[Any, ...]] = set()
 
     configured_sources = list(config.get("schedule", {}).get("columns", []))
     header_candidates = _source_column_candidates(sheet, config)
+    configured_status_columns = {
+        _effective_column(int(source["index"]), config, sheet)
+        for source in configured_sources
+        if source.get("kind") == "status"
+    }
 
     for row_index, current in rows:
         holiday = important_day_name(current, config.get("special_days", {}))
@@ -875,18 +887,38 @@ def parse_calendar_schedule(
                     for alias in aliases
                     if str(alias.get("code", "")) in non_work_codes
                 ]
-                if not matching:
+                rest_matching = [
+                    alias
+                    for alias in aliases
+                    if str(alias.get("code", "")) in rest_marker_codes
+                ]
+                if not matching and not rest_matching:
                     continue
 
                 # A marker next to a struck name is the normal roster notation.
                 # In a dedicated status column, an explicit marker is also valid.
-                configured_status_columns = {
-                    _effective_column(int(source["index"]), config, sheet)
-                    for source in config.get("schedule", {}).get("columns", [])
-                    if source.get("kind") == "status"
-                }
                 if not occurrence.struck and col not in configured_status_columns:
                     continue
+
+                # After-duty is useful as roster context, but is not itself a
+                # calendar event. Keep it only as a marker so we can distinguish
+                # routine post-call time from a compensatory rest day for Friday duty.
+                for alias in rest_matching:
+                    marker_code = str(alias.get("code", ""))
+                    marker_key = (current, occurrence.name, marker_code)
+                    if marker_key in rest_marker_seen:
+                        continue
+                    rest_marker_seen.add(marker_key)
+                    rest_markers.append(
+                        {
+                            "date": current,
+                            "employee": occurrence.name,
+                            "code": marker_code,
+                            "source_cell": cell.coordinate,
+                            "raw_text": cell.text,
+                            "struck": occurrence.struck,
+                        }
+                    )
 
                 for alias in matching:
                     code = str(alias.get("code", ""))
@@ -927,6 +959,11 @@ def parse_calendar_schedule(
                 if record.get("date") == current
                 and record.get("calendar_kind") == "non_work"
             }
+            explicit_non_work_names.update(
+                str(marker["employee"])
+                for marker in rest_markers
+                if marker.get("date") == current
+            )
             for employee in employee_names:
                 if employee in day_working_names or employee in explicit_non_work_names:
                     continue
@@ -956,6 +993,79 @@ def parse_calendar_schedule(
                         "calendar_kind": "holiday_vacation",
                     }
                 )
+
+    # 4) Convert only true compensatory rest after a Friday ward duty.
+    # Routine after-duty on the calendar day immediately following an overnight
+    # duty is intentionally suppressed because the duty event itself already
+    # spans into that day.
+    overnight_codes = {
+        "ward_duty_regular",
+        "ward_duty_friday",
+        "ward_duty_saturday",
+        "er_duty",
+    }
+    used_friday_duties: set[tuple[str, date]] = set()
+    duty_records = [
+        record
+        for record in records
+        if record.get("calendar_kind") == "duty"
+    ]
+
+    for marker in sorted(rest_markers, key=lambda item: (item["date"], item["employee"])):
+        marker_date = marker["date"]
+        employee = str(marker["employee"])
+        employee_duties = [
+            record
+            for record in duty_records
+            if str(record.get("employee")) == employee
+        ]
+
+        # Normal post-call day: no separate calendar event.
+        if any(
+            record.get("task_code") in overnight_codes
+            and (marker_date - record["date"]).days == 1
+            for record in employee_duties
+        ):
+            continue
+
+        friday_candidates = [
+            record
+            for record in employee_duties
+            if record.get("task_code") == "ward_duty_friday"
+            and 1 < (marker_date - record["date"]).days <= friday_rest_max_days
+            and (employee, record["date"]) not in used_friday_duties
+        ]
+        if not friday_candidates:
+            continue
+
+        friday_duty = max(friday_candidates, key=lambda record: record["date"])
+        used_friday_duties.add((employee, friday_duty["date"]))
+        code = "friday_duty_rest"
+        label = str(task_labels.get(code, "מנוחה עבור תורנות שישי"))
+        key = (marker_date, employee, code, "")
+        if key in seen:
+            continue
+        seen.add(key)
+        records.append(
+            {
+                "date": marker_date,
+                "day": hebrew_weekday(marker_date),
+                "holiday": important_day_name(marker_date, config.get("special_days", {})),
+                "employee": employee,
+                "record_type": "task",
+                "task_code": code,
+                "task_label": label,
+                "subtype": "",
+                "source_code": "friday_duty_rest",
+                "source_label": label,
+                "source_kind": "status",
+                "slot": 1,
+                "source_cell": marker.get("source_cell", ""),
+                "raw_text": marker.get("raw_text", ""),
+                "struck": bool(marker.get("struck", False)),
+                "calendar_kind": "compensatory_rest",
+            }
+        )
 
     columns = [
         "date", "day", "holiday", "employee", "record_type", "task_code",
