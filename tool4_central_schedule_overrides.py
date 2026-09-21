@@ -1,13 +1,17 @@
-"""Tool 4 - view a final schedule and create calendar invitations.
+"""Tool 4 - create calendar invitations from a monthly schedule.
 
-Managers publish the official central schedule in Tool 3.
-Tool 4 may read that official schedule or a temporary upload used only in the
-current Streamlit session. Temporary uploads are never written to Drive or to
-the final-schedule index.
+Tool 3 owns monthly-schedule browsing and manager-only publishing.
+Tool 4 is action-focused:
+- use a stored official schedule version, or a temporary local upload;
+- resolve the relevant employee;
+- preview only the events that can become calendar invitations;
+- export selected events as ICS.
+
+Temporary uploads are never persisted to Google Drive or the schedule index.
 """
 from __future__ import annotations
 
-from final_schedule_reader import download_final_schedule, latest_final_schedule
+from final_schedule_reader import download_final_schedule, list_final_schedules
 from tool3_minimal_overrides import _calendar_candidate_events, _session_calendar_config
 
 
@@ -40,11 +44,7 @@ def _identified_employee_name(st, names: list[str]) -> str | None:
     return ""
 
 
-def _load_central_schedule(st, app_module, year: int, month: int, config: dict):
-    schedule_file = latest_final_schedule(st, year, month)
-    if schedule_file is None:
-        return None
-
+def _load_stored_schedule(st, app_module, schedule_file: dict, config: dict):
     stored_name = str(schedule_file.get("name", "") or "")
     version = int(schedule_file.get("version", 0) or 0)
     content = download_final_schedule(st, str(schedule_file.get("id", "") or ""))
@@ -53,9 +53,8 @@ def _load_central_schedule(st, app_module, year: int, month: int, config: dict):
     return {
         "workbook": workbook,
         "names": names,
-        "source_label": f"{stored_name} (גרסה V{version})",
-        "source_key": f"central_{year}_{month}_{version}",
-        "temporary": False,
+        "source_label": f"{stored_name} (V{version})",
+        "source_key": f"stored_{schedule_file.get('id', '')}_{version}",
     }
 
 
@@ -69,33 +68,7 @@ def _load_temporary_schedule(uploaded, app_module, config: dict):
         "names": names,
         "source_label": filename,
         "source_key": f"temporary_{filename}_{len(content)}",
-        "temporary": True,
     }
-
-
-def _render_schedule_view(st, records, employee: str) -> None:
-    st.subheader("צפייה בלו״ז")
-    employee_records = records[records["employee"] == employee].copy()
-    if employee_records.empty:
-        st.info("לא נמצאו שיבוצים עבור העובד/ת שנבחר/ה.")
-        return
-
-    preferred = [
-        column
-        for column in ("date", "day", "task_label", "subtype")
-        if column in employee_records.columns
-    ]
-    display = employee_records[preferred].copy() if preferred else employee_records.copy()
-    rename = {
-        "date": "תאריך",
-        "day": "יום",
-        "task_label": "שיבוץ",
-        "subtype": "פירוט",
-    }
-    display = display.rename(columns=rename)
-    if "פירוט" in display.columns and display["פירוט"].fillna("").astype(str).str.strip().eq("").all():
-        display = display.drop(columns=["פירוט"])
-    st.dataframe(display, width="stretch", hide_index=True)
 
 
 def install(app_module) -> None:
@@ -105,43 +78,71 @@ def install(app_module) -> None:
     def tool_calendar_from_schedule() -> None:
         st = app_module.st
         app_module.render_header(
-            "4. צפייה בלו״ז ויצירת זימונים",
-            "אפשר להשתמש בסידור הרשמי שנשמר על ידי מנהל/ת, או להעלות קובץ זמני לצפייה וליצירת ICS בלבד.",
+            "4. יצירת זימון ליומן",
+            "בחירת לו״ז קיים או העלאה זמנית, בחירת האירועים הרצויים והפקת קובץ ICS ליומן.",
         )
 
-        year, month = app_module.month_selector("calendar_final_schedule", offset=0)
         config = _session_calendar_config(app_module, st)
         employee_mode = isinstance(st.session_state.get(IDENTIFIED_WORKER_SESSION_KEY), dict)
 
         source = st.radio(
-            "מקור הסידור",
-            ["סידור רשמי שמור", "העלאה זמנית"],
+            "מקור הלו״ז",
+            ["לו״ז שמור", "העלאה זמנית"],
             horizontal=True,
             key="tool4_schedule_source",
         )
 
         schedule_data = None
-        if source == "סידור רשמי שמור":
+        selected_year = None
+        selected_month = None
+
+        if source == "לו״ז שמור":
+            year, month = app_module.month_selector("calendar_final_schedule", offset=0)
+            selected_year, selected_month = year, month
+
             try:
-                schedule_data = _load_central_schedule(st, app_module, year, month, config)
+                schedules = list_final_schedules(st, year, month)
             except Exception as exc:
-                st.error(f"לא ניתן לקרוא את ארכיון הסידורים המרכזי: {exc}")
+                st.error(f"לא ניתן לקרוא את ארכיון הלו״זים: {exc}")
                 return
 
-            if schedule_data is None:
+            if not schedules:
                 st.info(
-                    f"עדיין לא נשמר סידור רשמי לחודש {month:02d}-{year:04d}. "
-                    "מנהל/ת יכול/ה לפרסם אותו בכלי 3, או שניתן לבחור העלאה זמנית."
+                    f"לא נמצא לו״ז שמור עבור {month:02d}-{year:04d}. "
+                    "אפשר לבחור חודש אחר או להשתמש בהעלאה זמנית."
                 )
                 return
-            st.success(f"נטען הסידור הרשמי: {schedule_data['source_label']}.")
+
+            labels = []
+            by_label = {}
+            for item in schedules:
+                version = int(item.get("version", 0) or 0)
+                name = str(item.get("name", "") or "")
+                label = f"V{version} - {name}"
+                labels.append(label)
+                by_label[label] = item
+
+            selected_label = st.selectbox(
+                "גרסת לו״ז",
+                labels,
+                index=0,
+                key=f"tool4_saved_version_{year}_{month}",
+            )
+            try:
+                schedule_data = _load_stored_schedule(
+                    st, app_module, by_label[selected_label], config
+                )
+            except Exception as exc:
+                st.error(f"לא ניתן לטעון את הלו״ז שנבחר: {exc}")
+                return
+            st.caption(f"מקור: {schedule_data['source_label']}")
         else:
             st.info(
-                "הקובץ הזמני משמש רק לצפייה וליצירת זימונים במהלך העבודה הנוכחית. "
-                "הוא אינו נשמר ב-Google Drive ואינו משנה את הסידור הרשמי."
+                "הקובץ משמש רק ליצירת הזימון במהלך העבודה הנוכחית. "
+                "הוא אינו נשמר במערכת ואינו משנה אף לו״ז רשמי."
             )
             uploaded = st.file_uploader(
-                "העלאת לוח זמנים זמני",
+                "העלאת לו״ז זמני",
                 type=["xls", "xlsx", "xlsm"],
                 key="tool4_temporary_schedule",
             )
@@ -152,28 +153,25 @@ def install(app_module) -> None:
             except Exception as exc:
                 st.error(f"לא ניתן לקרוא את הקובץ הזמני: {exc}")
                 return
-            st.success(f"נטען קובץ זמני: {schedule_data['source_label']}.")
+            st.caption(f"מקור זמני: {schedule_data['source_label']}")
 
         names = schedule_data["names"]
         workbook = schedule_data["workbook"]
         source_key = schedule_data["source_key"]
 
         if not names:
-            st.error(
-                "לא ניתן לזהות שמות עובדים מהסידור באופן אמין. "
-                "יש לבדוק שהקובץ הוא קובץ הסידור המקורי ובמבנה הנתמך."
-            )
+            st.error("לא ניתן לזהות שמות עובדים מהלו״ז באופן אמין.")
             return
 
         if employee_mode:
             employee = _identified_employee_name(st, names)
             if not employee:
                 st.error(
-                    "לא ניתן להתאים באופן אמין את המשתמש/ת המחובר/ת לשם בסידור. "
+                    "לא ניתן להתאים את המשתמש/ת המחובר/ת לשם בלו״ז. "
                     "מטעמי פרטיות לא יוצגו נתונים של עובדים אחרים."
                 )
                 return
-            st.caption(f"המידע מוצג עבור: {employee}")
+            st.caption(f"יצירת הזימון עבור: {employee}")
         else:
             employee = st.selectbox(
                 "בחירת עובד/ת",
@@ -185,10 +183,8 @@ def install(app_module) -> None:
         try:
             records = app_module.parse_schedule(workbook, config, names)
         except Exception as exc:
-            st.error(f"פענוח הסידור נכשל: {exc}")
+            st.error(f"פענוח הלו״ז נכשל: {exc}")
             return
-
-        _render_schedule_view(st, records, employee)
 
         candidate_records, events, event_config = _calendar_candidate_events(
             app_module,
@@ -197,54 +193,76 @@ def install(app_module) -> None:
             config,
         )
 
-        st.subheader("אירועים לזימון")
+        st.subheader("אירועים שזוהו")
         if candidate_records.empty:
-            st.info("לא נמצאו תורנויות או אירועים מיוחדים עבור העובד/ת.")
+            st.info("לא נמצאו תורנויות או אירועים מתאימים ליצירת זימון.")
+            selected_events = []
         else:
             display_columns = [
-                column for column in ("date", "day", "task_label", "subtype")
+                column
+                for column in ("date", "day", "task_label", "subtype")
                 if column in candidate_records.columns
             ]
             display = candidate_records[display_columns].rename(
-                columns={"date": "תאריך", "day": "יום", "task_label": "אירוע", "subtype": "פירוט"}
+                columns={
+                    "date": "תאריך",
+                    "day": "יום",
+                    "task_label": "אירוע",
+                    "subtype": "פירוט",
+                }
             )
-            if "פירוט" in display.columns and display["פירוט"].fillna("").astype(str).str.strip().eq("").all():
+            if (
+                "פירוט" in display.columns
+                and display["פירוט"].fillna("").astype(str).str.strip().eq("").all()
+            ):
                 display = display.drop(columns=["פירוט"])
             st.dataframe(display, width="stretch", hide_index=True)
 
-        if not events:
-            st.info("אין כרגע אירועים לשמירה ביומן.")
-            selected_events = []
-        else:
-            event_table = app_module.event_dataframe(events)
-            preview = event_table[["תאריך", "אירוע", "התחלה", "סיום"]].copy()
-            preview.insert(0, "להוסיף ליומן", True)
-            edited_preview = st.data_editor(
-                preview,
-                hide_index=True,
-                width="stretch",
-                column_order=["סיום", "התחלה", "אירוע", "תאריך", "להוסיף ליומן"],
-                disabled=[column for column in preview.columns if column != "להוסיף ליומן"],
-                column_config={
-                    "להוסיף ליומן": st.column_config.CheckboxColumn("להוסיף ליומן"),
-                },
-                key=f"calendar_event_selection_{source_key}_{employee}",
-            )
-            selected_events = [
-                event
-                for event, keep in zip(events, edited_preview["להוסיף ליומן"].tolist())
-                if bool(keep)
-            ]
-            st.caption(f"נבחרו {len(selected_events)} מתוך {len(events)} אירועים.")
+            if not events:
+                st.info("אין כרגע אירועים שניתן לייצא ליומן.")
+                selected_events = []
+            else:
+                event_table = app_module.event_dataframe(events)
+                preview = event_table[["תאריך", "אירוע", "התחלה", "סיום"]].copy()
+                preview.insert(0, "להוסיף ליומן", True)
+                edited_preview = st.data_editor(
+                    preview,
+                    hide_index=True,
+                    width="stretch",
+                    column_order=["סיום", "התחלה", "אירוע", "תאריך", "להוסיף ליומן"],
+                    disabled=[
+                        column
+                        for column in preview.columns
+                        if column != "להוסיף ליומן"
+                    ],
+                    column_config={
+                        "להוסיף ליומן": st.column_config.CheckboxColumn("להוסיף ליומן"),
+                    },
+                    key=f"calendar_event_selection_{source_key}_{employee}",
+                )
+                selected_events = [
+                    event
+                    for event, keep in zip(
+                        events, edited_preview["להוסיף ליומן"].tolist()
+                    )
+                    if bool(keep)
+                ]
+                st.caption(f"נבחרו {len(selected_events)} מתוך {len(events)} אירועים.")
 
         ics = app_module.events_to_ics(
             selected_events,
             event_config.get("timezone", "Asia/Jerusalem"),
         )
+
+        if selected_year is not None and selected_month is not None:
+            filename = f"לוז_{employee}_{selected_year}_{selected_month:02d}.ics"
+        else:
+            filename = f"לוז_{employee}.ics"
+
         st.download_button(
             "הורדת קובץ ICS",
             data=ics,
-            file_name=f"לוז_{employee}_{year}_{month:02d}.ics",
+            file_name=filename,
             mime="text/calendar",
             width="stretch",
             disabled=not selected_events,
