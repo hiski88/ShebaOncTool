@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 
 from google_sheets_submissions import _service
 from system_users import find_worker_by_id_number, log_audit, normalize_id_number
+from worker_profile_rules import validate_worker_birth_date
 
 
 REGISTRATIONS_SHEET = "WorkerRegistrations"
@@ -152,6 +153,9 @@ def validate_registration_fields(
         return "יש להזין שם משפחה."
     if birth_date is None:
         return "יש להזין תאריך לידה."
+    birth_date_error = validate_worker_birth_date(birth_date)
+    if birth_date_error:
+        return birth_date_error
     if not address.strip():
         return "יש להזין כתובת."
     if not locality.strip():
