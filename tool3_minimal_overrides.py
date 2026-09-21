@@ -21,10 +21,9 @@ CALENDAR_TASK_CODES = {
     "research",
     "study_day",
     "absence",
-    "absence_other",
     "shahar_program",
 }
-STATUS_EVENT_CODES = {"vacation", "research", "study_day", "absence", "absence_other", "shahar_program"}
+STATUS_EVENT_CODES = {"vacation", "research", "study_day", "absence", "shahar_program"}
 
 
 def _session_calendar_config(app_module, st) -> dict:
