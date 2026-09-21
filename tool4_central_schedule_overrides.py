@@ -12,8 +12,9 @@ Temporary uploads are never persisted to Google Drive or the schedule index.
 from __future__ import annotations
 
 from final_schedule_reader import download_final_schedule, list_final_schedules
-from schedule_parser import parse_calendar_schedule
+from schedule_parser import infer_calendar_employee_names, parse_calendar_schedule
 from tool3_minimal_overrides import _calendar_candidate_events, _session_calendar_config
+from worker_directory import active_worker_identities, allowed_schedule_aliases
 
 
 IDENTIFIED_WORKER_SESSION_KEY = "medstaff_identified_worker_v1"
@@ -21,6 +22,40 @@ IDENTIFIED_WORKER_SESSION_KEY = "medstaff_identified_worker_v1"
 
 def _normalize_name(value: object) -> str:
     return " ".join(str(value or "").strip().split()).casefold()
+
+
+def _schedule_employee_names(st, workbook, config: dict) -> tuple[list[str], bool]:
+    """Return schedule aliases, preferring Workers as the identity source.
+
+    The boolean indicates whether the result is Workers-backed. If Workers is
+    still empty, a narrow bootstrap inference is used temporarily.
+    """
+    try:
+        identities = active_worker_identities(st)
+    except Exception:
+        identities = []
+
+    if identities:
+        allowed = allowed_schedule_aliases(identities)
+        inferred = infer_calendar_employee_names(workbook, config)
+        allowed_by_normalized = {_normalize_name(alias): alias for alias in allowed}
+        matched = [
+            name
+            for name in inferred
+            if _normalize_name(name) in allowed_by_normalized
+        ]
+
+        # Keep aliases that are present verbatim in the workbook parser input.
+        # This allows schedules that use first name only while Workers stores
+        # the full identity.
+        if matched:
+            return sorted(set(matched)), True
+
+        # If no alias was inferred, still pass the official aliases to the
+        # parser so an exact occurrence in the workbook can be matched.
+        return sorted(set(allowed)), True
+
+    return sorted(set(infer_calendar_employee_names(workbook, config))), False
 
 
 def _identified_employee_name(st, names: list[str]) -> str | None:
@@ -50,25 +85,27 @@ def _load_stored_schedule(st, app_module, schedule_file: dict, config: dict):
     version = int(schedule_file.get("version", 0) or 0)
     content = download_final_schedule(st, str(schedule_file.get("id", "") or ""))
     workbook = app_module.read_schedule_workbook(content, stored_name)
-    names = sorted(set(app_module.infer_employee_names(workbook, config)))
+    names, workers_backed = _schedule_employee_names(st, workbook, config)
     return {
         "workbook": workbook,
         "names": names,
         "source_label": f"{stored_name} (V{version})",
         "source_key": f"stored_{schedule_file.get('id', '')}_{version}",
+        "workers_backed": workers_backed,
     }
 
 
-def _load_temporary_schedule(uploaded, app_module, config: dict):
+def _load_temporary_schedule(st, uploaded, app_module, config: dict):
     content = uploaded.getvalue()
     filename = str(uploaded.name or "temporary_schedule")
     workbook = app_module.read_schedule_workbook(content, filename)
-    names = sorted(set(app_module.infer_employee_names(workbook, config)))
+    names, workers_backed = _schedule_employee_names(st, workbook, config)
     return {
         "workbook": workbook,
         "names": names,
         "source_label": filename,
         "source_key": f"temporary_{filename}_{len(content)}",
+        "workers_backed": workers_backed,
     }
 
 
@@ -150,7 +187,7 @@ def install(app_module) -> None:
             if uploaded is None:
                 return
             try:
-                schedule_data = _load_temporary_schedule(uploaded, app_module, config)
+                schedule_data = _load_temporary_schedule(st, uploaded, app_module, config)
             except Exception as exc:
                 st.error(f"לא ניתן לקרוא את הקובץ הזמני: {exc}")
                 return
@@ -159,6 +196,14 @@ def install(app_module) -> None:
         names = schedule_data["names"]
         workbook = schedule_data["workbook"]
         source_key = schedule_data["source_key"]
+        workers_backed = bool(schedule_data.get("workers_backed", False))
+
+        if not workers_backed:
+            st.caption(
+                "מצב זמני: רשימת Workers עדיין ריקה או אינה זמינה, ולכן מוצגים "
+                "שמות שזוהו באופן שמרני מהלו״ז. לאחר הזנת העובדים, Workers תהיה "
+                "מקור האמת היחיד."
+            )
 
         if not names:
             st.error("לא ניתן לזהות שמות עובדים מהלו״ז באופן אמין.")
