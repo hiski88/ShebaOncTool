@@ -241,8 +241,34 @@ def _has_modern_holiday_column(sheet: SheetData) -> bool:
     return False
 
 
-def _effective_column(index: int, modern_layout: bool) -> int:
-    return index + 1 if modern_layout and index >= 2 else index
+def _schedule_column_offset(config: Mapping[str, Any], sheet: SheetData) -> int:
+    """Return the configured source-column offset.
+
+    Final schedule layouts must not be shifted based on cell contents. In the
+    oncology roster, column C can legitimately contain schedule text such as
+    holiday-related notes while C/D/E are still radiation columns. A content
+    heuristic therefore caused false one-column shifts and misclassified duty
+    types. Keep the offset explicit and configurable instead.
+    """
+    schedule_config = config.get("schedule", {})
+    try:
+        return int(schedule_config.get("column_offset", 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _holiday_column_index(config: Mapping[str, Any]) -> int | None:
+    raw = config.get("schedule", {}).get("holiday_column_index")
+    if raw is None or raw == "":
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _effective_column(index: int, config: Mapping[str, Any], sheet: SheetData) -> int:
+    return index + _schedule_column_offset(config, sheet)
 
 
 def schedule_rows(sheet: SheetData, config: Mapping[str, Any]) -> list[tuple[int, date]]:
@@ -262,14 +288,14 @@ def _clean_candidate(fragment: str) -> str:
 
 def infer_employee_names(workbook: WorkbookData, config: Mapping[str, Any]) -> list[str]:
     sheet = workbook.sheet_by_preference(config.get("schedule", {}).get("sheet_names", []))
-    modern = _has_modern_holiday_column(sheet)
+    holiday_column = _holiday_column_index(config)
     excluded = {normalize_spaces(term).casefold() for term in config.get("non_name_terms", [])}
     columns = config.get("schedule", {}).get("columns", [])
     counts: dict[str, int] = {}
     duty_names: set[str] = set()
 
     for column in columns:
-        col = _effective_column(int(column["index"]), modern)
+        col = _effective_column(int(column["index"]), config, sheet)
         if col >= sheet.ncols:
             continue
         for row, _ in schedule_rows(sheet, config):
@@ -380,15 +406,19 @@ def parse_schedule(
     employee_names: Sequence[str],
 ) -> pd.DataFrame:
     sheet = workbook.sheet_by_preference(config.get("schedule", {}).get("sheet_names", []))
-    modern = _has_modern_holiday_column(sheet)
+    holiday_column = _holiday_column_index(config)
     rows = schedule_rows(sheet, config)
     records: list[dict[str, Any]] = []
     task_labels = config.get("task_labels", {})
 
     for row_index, current in rows:
-        holiday = normalize_spaces(sheet.cell(row_index, 2).text) if modern else important_day_name(current)
+        holiday = (
+            normalize_spaces(sheet.cell(row_index, holiday_column).text)
+            if holiday_column is not None and holiday_column < sheet.ncols
+            else important_day_name(current)
+        )
         for source in config.get("schedule", {}).get("columns", []):
-            col = _effective_column(int(source["index"]), modern)
+            col = _effective_column(int(source["index"]), config, sheet)
             if col >= sheet.ncols:
                 continue
             cell = sheet.cell(row_index, col)
