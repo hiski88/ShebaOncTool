@@ -7,6 +7,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from google_sheets_submissions import _service
+from worker_profile_rules import birth_date_input_values, validate_worker_birth_date
 
 
 WORKERS_SHEET = "Workers"
@@ -295,6 +296,10 @@ def _validate_worker_fields(
     if missing:
         return "יש למלא את כל שדות החובה: " + ", ".join(missing)
 
+    birth_date_error = validate_worker_birth_date(birth_date)
+    if birth_date_error:
+        return birth_date_error
+
     if department_start < birth_date:
         return "תאריך תחילת הפעילות במחלקה לא יכול להיות מוקדם מתאריך הלידה."
     if specialization_start < birth_date:
@@ -340,8 +345,7 @@ def _render_add_worker(st) -> None:
         "מזהה העובד נוצר אוטומטית ואינו דורש הזנה."
     )
 
-    today = date.today()
-    earliest_birth_date = date(today.year - 70, 1, 1)
+    birth_default, earliest_birth_date, latest_birth_date = birth_date_input_values()
 
     with st.form("tool6_add_worker_form", clear_on_submit=False):
         st.markdown("### פרטים אישיים")
@@ -358,9 +362,9 @@ def _render_add_worker(st) -> None:
         with row2_col2:
             birth_date = st.date_input(
                 "תאריך לידה",
-                value=None,
+                value=birth_default,
                 min_value=earliest_birth_date,
-                max_value=today,
+                max_value=latest_birth_date,
                 format="DD/MM/YYYY",
             )
 
