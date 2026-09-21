@@ -26,7 +26,7 @@ def _render_employee_tools(st, app_module) -> None:
 
     tool = st.radio(
         "כלים אישיים",
-        ["הזנת העדפות", "צפייה בלו״ז ויצירת זימונים"],
+        ["הזנת העדפות", "לו״ז חודשי", "צפייה בלו״ז ויצירת זימונים"],
         horizontal=True,
         key=EMPLOYEE_TOOL_KEY,
     )
@@ -35,6 +35,11 @@ def _render_employee_tools(st, app_module) -> None:
     st.session_state["preferences_employee"] = str(worker.get("full_name", ""))
     if tool == "הזנת העדפות":
         app_module.tool_preferences()
+        return
+    if tool == "לו״ז חודשי":
+        from tool3_final_schedule import render as render_monthly_schedule
+
+        render_monthly_schedule(app_module)
         return
     app_module.tool_calendar()
 
