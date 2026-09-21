@@ -93,7 +93,7 @@ def install(app_module) -> None:
             [
                 "1. הזנת העדפות",
                 "2. מתכנן",
-                "3. העלאת סידור סופי",
+                "3. לו״ז חודשי",
                 "4. יצירת זימונים",
                 "5. נתונים היסטוריים והוגנות",
                 "6. ניהול עובדים",
@@ -118,7 +118,7 @@ def install(app_module) -> None:
             original_tool_manager()
             return
 
-        if tool == "3. העלאת סידור סופי":
+        if tool == "3. לו״ז חודשי":
             if not _password_granted(
                 st,
                 secret_name=MANAGER_PASSWORD_SECRET,
