@@ -196,16 +196,19 @@ def install(app_module) -> None:
         action = st.radio(
             "בחירת פעולה",
             [
+                "אישור עובדים",
                 "הוספת עובד/ת",
                 "עריכת עובד/ת",
                 "צפייה ברשימת עובדים",
                 "ניהול התמחות ותקופות",
-                "בקשות הצטרפות",
             ],
             key="tool6_action",
         )
 
         st.divider()
+        if action == "אישור עובדים":
+            _render_pending_registrations(st, tool6)
+            return
         if action == "הוספת עובד/ת":
             tool6._render_add_worker(st)
             return
@@ -215,10 +218,7 @@ def install(app_module) -> None:
         if action == "צפייה ברשימת עובדים":
             tool6._render_worker_list(st, module.pd)
             return
-        if action == "ניהול התמחות ותקופות":
-            tool6._render_periods(st, module.pd)
-            return
-        _render_pending_registrations(st, tool6)
+        tool6._render_periods(st, module.pd)
 
     tool6.render = render_with_registrations
     tool6._tool6_registration_override_installed = True
