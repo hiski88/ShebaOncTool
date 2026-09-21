@@ -26,8 +26,30 @@ def select_latest_final_schedule(files: list[dict], year: int, month: int) -> di
     return candidates[0]
 
 
+def list_final_schedules(st, year: int, month: int) -> list[dict]:
+    """Return all stored final schedules for a month, newest version first."""
+    candidates: list[dict] = []
+    for item in list_year_files(st, year):
+        parsed = parse_final_schedule_filename(item.get("name", ""))
+        if not parsed:
+            continue
+        if parsed["year"] != int(year) or parsed["month"] != int(month):
+            continue
+        candidates.append({**item, **parsed})
+    candidates.sort(
+        key=lambda item: (
+            int(item.get("version", 0)),
+            str(item.get("modifiedTime", "") or ""),
+            str(item.get("name", "") or ""),
+        ),
+        reverse=True,
+    )
+    return candidates
+
+
 def latest_final_schedule(st, year: int, month: int) -> dict | None:
-    return select_latest_final_schedule(list_year_files(st, year), year, month)
+    schedules = list_final_schedules(st, year, month)
+    return schedules[0] if schedules else None
 
 
 def download_final_schedule(st, file_id: str) -> bytes:
