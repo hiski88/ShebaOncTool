@@ -222,6 +222,16 @@
     },
     {
       "terms": [
+        "ת\"ש",
+        "ת״ש",
+        "תש"
+      ],
+      "code": "personal_day",
+      "label": "ת\"ש",
+      "kind": "status"
+    },
+    {
+      "terms": [
         "מחקר"
       ],
       "code": "research",
@@ -363,7 +373,8 @@
     "absence": "היעדרות",
     "absence_other": "היעדרויות / אחר",
     "sick_leave": "מחלה",
-    "radiation": "קרינה"
+    "radiation": "קרינה",
+    "personal_day": "ת\"ש"
   },
   "event_defaults": {
     "department_regular": {
@@ -496,6 +507,10 @@
     "radiation": {
       "all_day": true,
       "create": true
+    },
+    "personal_day": {
+      "all_day": true,
+      "create": false
     }
   },
   "staffing_rules": {
@@ -508,5 +523,44 @@
     "minimum_age": 20,
     "birth_date_default_age": 30,
     "birth_date_picker_years_back": 80
+  },
+  "calendar_parser": {
+    "duty_columns": [
+      {
+        "code": "day_hospital_duty",
+        "label": "תורנות אשפוז יום",
+        "header_terms": [
+          "ת. א.יום",
+          "ת.א.יום",
+          "תורנות אשפוז יום"
+        ]
+      },
+      {
+        "code": "er_duty",
+        "label": "תורנות מיון",
+        "header_terms": [
+          "תורן מיון",
+          "תורנות מיון"
+        ]
+      },
+      {
+        "code": "ward_duty",
+        "label": "תורנות מחלקה",
+        "header_terms": [
+          "תורן מחלקה",
+          "תורנות מחלקה"
+        ]
+      }
+    ],
+    "non_work_codes": [
+      "after_duty",
+      "vacation",
+      "absence",
+      "sick_leave",
+      "personal_day",
+      "research",
+      "study_day",
+      "shahar_program"
+    ]
   }
 }
