@@ -17,13 +17,25 @@ CALENDAR_TASK_CODES = {
     "ward_duty_saturday",
     "er_duty",
     "day_hospital_duty",
+    "after_duty",
     "vacation",
+    "sick_leave",
+    "personal_day",
     "research",
     "study_day",
     "absence",
     "shahar_program",
 }
-STATUS_EVENT_CODES = {"vacation", "research", "study_day", "absence", "shahar_program"}
+STATUS_EVENT_CODES = {
+    "after_duty",
+    "vacation",
+    "sick_leave",
+    "personal_day",
+    "research",
+    "study_day",
+    "absence",
+    "shahar_program",
+}
 
 
 def _session_calendar_config(app_module, st) -> dict:
