@@ -297,6 +297,62 @@ def schedule_rows(sheet: SheetData, config: Mapping[str, Any]) -> list[tuple[int
     return rows
 
 
+def _source_column_candidates(sheet: SheetData, config: Mapping[str, Any]) -> dict[str, list[int]]:
+    """Find source columns from visible headers, keyed by normalized source label.
+
+    The monthly roster may gain or lose columns over time. Unique operational
+    headers such as "תורנות מחלקה" or "תורנות מיון" are therefore resolved
+    from the workbook itself. Configured numeric indices remain a fallback.
+    """
+    max_rows = int(config.get("schedule", {}).get("header_search_rows", 10) or 10)
+    wanted_labels = {
+        normalize_spaces(source.get("label", "")).casefold()
+        for source in config.get("schedule", {}).get("columns", [])
+        if normalize_spaces(source.get("label", ""))
+    }
+    found: dict[str, list[int]] = {label: [] for label in wanted_labels}
+
+    for col in range(sheet.ncols):
+        column_texts = [
+            normalize_spaces(sheet.cell(row, col).text)
+            for row in range(min(sheet.nrows, max_rows))
+            if normalize_spaces(sheet.cell(row, col).text)
+        ]
+        for label in wanted_labels:
+            for text_value in column_texts:
+                folded = text_value.casefold()
+                if folded == label or label in folded:
+                    found[label].append(col)
+                    break
+
+    for label in found:
+        found[label] = sorted(set(found[label]))
+    return found
+
+
+def _resolved_source_column(
+    source: Mapping[str, Any],
+    sheet: SheetData,
+    config: Mapping[str, Any],
+    header_candidates: Mapping[str, list[int]],
+) -> int:
+    """Resolve one configured source to its actual workbook column."""
+    label = normalize_spaces(source.get("label", "")).casefold()
+    matches = list(header_candidates.get(label, []))
+
+    # Use workbook headers only when the label identifies the column
+    # unambiguously. Repeated groups such as radiation/clinics keep their
+    # configured slot/index fallback unless the workbook exposes each slot.
+    if len(matches) == 1:
+        return matches[0]
+
+    slot = int(source.get("slot", 1) or 1)
+    if len(matches) >= slot and len(matches) > 1:
+        return matches[slot - 1]
+
+    return _effective_column(int(source["index"]), config, sheet)
+
+
 def _clean_candidate(fragment: str) -> str:
     fragment = fragment.strip(" \t\n,;:|()[]{}")
     return normalize_spaces(fragment)
@@ -307,11 +363,12 @@ def infer_employee_names(workbook: WorkbookData, config: Mapping[str, Any]) -> l
     holiday_column = _holiday_column_index(config)
     excluded = {normalize_spaces(term).casefold() for term in config.get("non_name_terms", [])}
     columns = config.get("schedule", {}).get("columns", [])
+    header_candidates = _source_column_candidates(sheet, config)
     counts: dict[str, int] = {}
     duty_names: set[str] = set()
 
     for column in columns:
-        col = _effective_column(int(column["index"]), config, sheet)
+        col = _resolved_source_column(column, sheet, config, header_candidates)
         if col >= sheet.ncols:
             continue
         for row, _ in schedule_rows(sheet, config):
@@ -424,6 +481,7 @@ def parse_schedule(
     sheet = workbook.sheet_by_preference(config.get("schedule", {}).get("sheet_names", []))
     holiday_column = _holiday_column_index(config)
     rows = schedule_rows(sheet, config)
+    header_candidates = _source_column_candidates(sheet, config)
     records: list[dict[str, Any]] = []
     task_labels = config.get("task_labels", {})
 
@@ -434,7 +492,7 @@ def parse_schedule(
             else important_day_name(current)
         )
         for source in config.get("schedule", {}).get("columns", []):
-            col = _effective_column(int(source["index"]), config, sheet)
+            col = _resolved_source_column(source, sheet, config, header_candidates)
             if col >= sheet.ncols:
                 continue
             cell = sheet.cell(row_index, col)
