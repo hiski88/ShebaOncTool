@@ -401,6 +401,67 @@ def infer_employee_names(workbook: WorkbookData, config: Mapping[str, Any]) -> l
     return sorted(names, key=lambda item: (item.casefold(), item))
 
 
+
+def infer_calendar_employee_names(
+    workbook: WorkbookData,
+    config: Mapping[str, Any],
+) -> list[str]:
+    """Temporary bootstrap inference for Tool 4 when Workers is still empty.
+
+    This is intentionally narrower than infer_employee_names: clinic columns
+    are excluded because clinic labels and physician surnames are common false
+    positives. Workers remains the long-term source of truth.
+    """
+    sheet = workbook.sheet_by_preference(config.get("schedule", {}).get("sheet_names", []))
+    rows = schedule_rows(sheet, config)
+    header_candidates = _source_column_candidates(sheet, config)
+    excluded = {normalize_spaces(term).casefold() for term in config.get("non_name_terms", [])}
+
+    usable_sources = [
+        source
+        for source in config.get("schedule", {}).get("columns", [])
+        if str(source.get("source_code", "")) != "clinic"
+        and source.get("kind") != "tracking"
+    ]
+
+    counts: dict[str, int] = {}
+    strong_names: set[str] = set()
+
+    for source in usable_sources:
+        col = _resolved_source_column(source, sheet, config, header_candidates)
+        if col >= sheet.ncols:
+            continue
+        for row, _ in rows:
+            text = sheet.cell(row, col).text
+            if not text:
+                continue
+            for fragment in re.split(r"[\n,;]+", text):
+                candidate = _clean_candidate(fragment)
+                folded = candidate.casefold()
+                if not candidate or folded in excluded:
+                    continue
+                if any(term and term in folded for term in excluded):
+                    continue
+                if any(char.isdigit() for char in candidate):
+                    continue
+                if "/" in candidate or "+" in candidate:
+                    continue
+                if len(candidate) < 2 or len(candidate) > 35:
+                    continue
+                if len(candidate.split()) > 4:
+                    continue
+                if not re.fullmatch(r"[א-תA-Za-zÀ-ÖØ-öø-ÿ'׳״\- ]+", candidate):
+                    continue
+                counts[candidate] = counts.get(candidate, 0) + 1
+                if source.get("kind") in {"duty", "status"}:
+                    strong_names.add(candidate)
+
+    return sorted(
+        [name for name, count in counts.items() if count >= 2 or name in strong_names],
+        key=lambda item: (item.casefold(), item),
+    )
+
+
 def _find_occurrences(cell: CellData, employee_names: Sequence[str]) -> list[PersonOccurrence]:
     matches: list[tuple[int, int, str]] = []
     occupied: list[tuple[int, int]] = []
