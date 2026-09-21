@@ -705,6 +705,207 @@ def _classify_weekend_department_and_duties(dataframe: pd.DataFrame, task_labels
     return result
 
 
+
+def _calendar_header_column(
+    sheet: SheetData,
+    header_terms: Sequence[str],
+    max_rows: int,
+) -> int | None:
+    """Resolve one calendar-duty column directly from the workbook header."""
+    normalized_terms = [
+        normalize_spaces(term).casefold()
+        for term in header_terms
+        if normalize_spaces(term)
+    ]
+    if not normalized_terms:
+        return None
+
+    candidates: list[tuple[int, int, int]] = []
+    for col in range(sheet.ncols):
+        best_score = 0
+        best_row = max_rows
+        for row in range(min(sheet.nrows, max_rows)):
+            text = normalize_spaces(sheet.cell(row, col).text).casefold()
+            if not text:
+                continue
+            for term in normalized_terms:
+                if text == term:
+                    score = 1000 + len(term)
+                elif term in text:
+                    score = 100 + len(term)
+                else:
+                    continue
+                if score > best_score:
+                    best_score = score
+                    best_row = row
+        if best_score:
+            candidates.append((best_score, -best_row, col))
+
+    if not candidates:
+        return None
+    candidates.sort(reverse=True)
+    return candidates[0][2]
+
+
+def parse_calendar_schedule(
+    workbook: WorkbookData,
+    config: Mapping[str, Any],
+    employee_names: Sequence[str],
+) -> pd.DataFrame:
+    """Parse only calendar-relevant events from a monthly roster.
+
+    This deliberately avoids the full operational parser. Duty events are
+    resolved from explicit workbook headers, while non-working days are added
+    only when the roster contains an explicit recognized marker such as
+    after-duty, vacation, illness, personal day, research or study day.
+    """
+    sheet = workbook.sheet_by_preference(config.get("schedule", {}).get("sheet_names", []))
+    rows = schedule_rows(sheet, config)
+    task_labels = config.get("task_labels", {})
+    calendar_cfg = config.get("calendar_parser", {})
+    max_header_rows = int(config.get("schedule", {}).get("header_search_rows", 10) or 10)
+    non_work_codes = {
+        str(code)
+        for code in calendar_cfg.get(
+            "non_work_codes",
+            ["after_duty", "vacation", "absence", "sick_leave", "research", "study_day"],
+        )
+    }
+
+    duty_specs = list(calendar_cfg.get("duty_columns", []))
+    duty_columns: list[tuple[dict[str, Any], int]] = []
+    for raw_spec in duty_specs:
+        spec = dict(raw_spec)
+        column = _calendar_header_column(
+            sheet,
+            spec.get("header_terms", []),
+            max_header_rows,
+        )
+        if column is not None:
+            duty_columns.append((spec, column))
+
+    records: list[dict[str, Any]] = []
+    seen: set[tuple[Any, ...]] = set()
+
+    for row_index, current in rows:
+        holiday = important_day_name(current)
+
+        # 1) Explicit duty columns only.
+        for spec, col in duty_columns:
+            cell = sheet.cell(row_index, col)
+            if not cell.text:
+                continue
+            for occurrence in _find_occurrences(cell, employee_names):
+                if occurrence.struck:
+                    continue
+
+                code = str(spec.get("code", ""))
+                label = str(spec.get("label", task_labels.get(code, code)))
+                if code == "ward_duty":
+                    if current.weekday() == 4:
+                        code = "ward_duty_friday"
+                    elif current.weekday() == 5:
+                        code = "ward_duty_saturday"
+                    else:
+                        code = "ward_duty_regular"
+                    label = str(task_labels.get(code, label))
+
+                key = (current, occurrence.name, code, "")
+                if key in seen:
+                    continue
+                seen.add(key)
+                records.append(
+                    {
+                        "date": current,
+                        "day": hebrew_weekday(current),
+                        "holiday": holiday,
+                        "employee": occurrence.name,
+                        "record_type": "task",
+                        "task_code": code,
+                        "task_label": label,
+                        "subtype": "",
+                        "source_code": str(spec.get("code", "")),
+                        "source_label": str(spec.get("label", "")),
+                        "source_kind": "duty",
+                        "slot": 1,
+                        "source_cell": cell.coordinate,
+                        "raw_text": cell.text,
+                        "struck": False,
+                        "calendar_kind": "duty",
+                    }
+                )
+
+        # 2) Explicit markers for days the worker is not coming to regular work.
+        for col in range(sheet.ncols):
+            cell = sheet.cell(row_index, col)
+            if not cell.text:
+                continue
+            occurrences = _find_occurrences(cell, employee_names)
+            if not occurrences:
+                continue
+
+            for occurrence in occurrences:
+                aliases = _aliases_in_text(occurrence.segment_after, config)
+                matching = [
+                    alias
+                    for alias in aliases
+                    if str(alias.get("code", "")) in non_work_codes
+                ]
+                if not matching:
+                    continue
+
+                # A marker next to a struck name is the normal roster notation.
+                # In a dedicated status column, an explicit marker is also valid.
+                configured_status_columns = {
+                    _effective_column(int(source["index"]), config, sheet)
+                    for source in config.get("schedule", {}).get("columns", [])
+                    if source.get("kind") == "status"
+                }
+                if not occurrence.struck and col not in configured_status_columns:
+                    continue
+
+                for alias in matching:
+                    code = str(alias.get("code", ""))
+                    label = str(alias.get("label", task_labels.get(code, code)))
+                    key = (current, occurrence.name, code, "")
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    records.append(
+                        {
+                            "date": current,
+                            "day": hebrew_weekday(current),
+                            "holiday": holiday,
+                            "employee": occurrence.name,
+                            "record_type": "task",
+                            "task_code": code,
+                            "task_label": label,
+                            "subtype": "",
+                            "source_code": "calendar_status",
+                            "source_label": label,
+                            "source_kind": "status",
+                            "slot": 1,
+                            "source_cell": cell.coordinate,
+                            "raw_text": cell.text,
+                            "struck": occurrence.struck,
+                            "calendar_kind": "non_work",
+                        }
+                    )
+
+    columns = [
+        "date", "day", "holiday", "employee", "record_type", "task_code",
+        "task_label", "subtype", "source_code", "source_label", "source_kind",
+        "slot", "source_cell", "raw_text", "struck", "calendar_kind",
+    ]
+    if not records:
+        return pd.DataFrame(columns=columns)
+    return (
+        pd.DataFrame(records, columns=columns)
+        .sort_values(["date", "employee", "calendar_kind", "task_code"])
+        .reset_index(drop=True)
+    )
+
+
 SUMMARY_DEFINITIONS: list[tuple[str, set[str]]] = [
     ("מחלקה יום רגיל", {"department_regular"}),
     (
