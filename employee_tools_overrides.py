@@ -26,7 +26,7 @@ def _render_employee_tools(st, app_module) -> None:
 
     tool = st.radio(
         "כלים אישיים",
-        ["הזנת העדפות", "יצירת זימונים ליומן"],
+        ["הזנת העדפות", "צפייה בלו״ז ויצירת זימונים"],
         horizontal=True,
         key=EMPLOYEE_TOOL_KEY,
     )
