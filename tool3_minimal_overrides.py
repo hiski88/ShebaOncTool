@@ -17,8 +17,8 @@ CALENDAR_TASK_CODES = {
     "ward_duty_saturday",
     "er_duty",
     "day_hospital_duty",
-    "after_duty",
     "vacation",
+    "friday_duty_rest",
     "sick_leave",
     "personal_day",
     "research",
@@ -27,7 +27,7 @@ CALENDAR_TASK_CODES = {
     "shahar_program",
 }
 STATUS_EVENT_CODES = {
-    "after_duty",
+    "friday_duty_rest",
     "vacation",
     "sick_leave",
     "personal_day",
