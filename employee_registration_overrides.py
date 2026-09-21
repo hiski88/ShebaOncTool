@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from datetime import datetime
 
 import entry_flow
+from worker_profile_rules import birth_date_input_values
 from worker_registrations import (
     CHILDREN_OPTIONS,
     MARITAL_STATUS_OPTIONS,
@@ -43,8 +44,7 @@ def _render_registration_form(st) -> None:
         )
 
         id_number = str(st.session_state.get(REGISTRATION_ID_KEY, "") or "")
-        today = datetime.now(ZoneInfo("Asia/Jerusalem")).date()
-        earliest_birth_date = date(today.year - 70, 1, 1)
+        birth_default, earliest_birth_date, latest_birth_date = birth_date_input_values()
 
         with st.form("new_worker_registration_form_v1", clear_on_submit=False):
             st.text_input("ת.ז", value=id_number, disabled=True)
@@ -57,9 +57,9 @@ def _render_registration_form(st) -> None:
 
             birth_date = st.date_input(
                 "תאריך לידה",
-                value=None,
+                value=birth_default,
                 min_value=earliest_birth_date,
-                max_value=today,
+                max_value=latest_birth_date,
                 format="DD/MM/YYYY",
             )
 
