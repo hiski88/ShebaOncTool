@@ -163,6 +163,7 @@ def install(app_module) -> None:
             st.error("לא ניתן לזהות שמות עובדים מהלו״ז באופן אמין.")
             return
 
+        display_employee = None
         if employee_mode:
             employee = _identified_employee_name(st, names)
             if not employee:
@@ -171,7 +172,9 @@ def install(app_module) -> None:
                     "מטעמי פרטיות לא יוצגו נתונים של עובדים אחרים."
                 )
                 return
-            st.caption(f"יצירת הזימון עבור: {employee}")
+            worker = st.session_state.get(IDENTIFIED_WORKER_SESSION_KEY, {})
+            display_employee = str(worker.get("full_name", "") or employee).strip()
+            st.caption(f"יצירת הזימון עבור: {display_employee}")
         else:
             employee = st.selectbox(
                 "בחירת עובד/ת",
@@ -179,6 +182,7 @@ def install(app_module) -> None:
                 index=0,
                 key=f"calendar_employee_{source_key}",
             )
+            display_employee = employee
 
         try:
             records = app_module.parse_schedule(workbook, config, names)
@@ -255,9 +259,9 @@ def install(app_module) -> None:
         )
 
         if selected_year is not None and selected_month is not None:
-            filename = f"לוז_{employee}_{selected_year}_{selected_month:02d}.ics"
+            filename = f"לוז_{display_employee}_{selected_year}_{selected_month:02d}.ics"
         else:
-            filename = f"לוז_{employee}.ics"
+            filename = f"לוז_{display_employee}.ics"
 
         st.download_button(
             "הורדת קובץ ICS",
