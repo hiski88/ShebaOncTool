@@ -171,7 +171,9 @@
         "kind": "status",
         "slot": 1
       }
-    ]
+    ],
+    "column_offset": 0,
+    "holiday_column_index": null
   },
   "activity_aliases": [
     {
